@@ -1,0 +1,1739 @@
+import React, { useState, useMemo } from "react";
+import {
+  Plus,
+  ChevronDown,
+  Clock,
+  Waves,
+  Award,
+  BarChart3,
+  X,
+  User,
+  UploadCloud,
+  LogOut,
+} from "lucide-react";
+
+/* ============================================================
+   FATHOM — Royal Navy Mine Clearance Diver logbook
+   Shares SLATE's visual identity: dive-computer dark UI,
+   teal accent, Oswald / IBM Plex Sans / IBM Plex Mono stack.
+   ============================================================ */
+
+const FONT_IMPORT_URL =
+  "https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
+
+const COLORS = {
+  bg: "#14181C",
+  panel: "#0F1518",
+  card: "#1E262B",
+  cardHover: "#232C31",
+  gaugeFace: "#171E22",
+  raised: "#262F35",
+  textPrimary: "#D9F2EA",
+  textBright: "#F2FBF8",
+  textMuted: "#8AA39C",
+  textDim: "#3E4B4F",
+  greyNoData: "#4A555B",
+  teal: "#33C7B3",
+  tealDark: "#16302C",
+  green: "#4CAF50",
+  amber: "#F2A93C",
+  red: "#E5533D",
+  redDark: "#331F1E",
+  divider: "#2C363C",
+  cardOutline: "#44535C",
+  blue: "#5AA9E6",
+};
+
+const DIVE_TYPES = [
+  { key: "training", label: "Training", color: COLORS.teal },
+  { key: "exercise", label: "Exercise", color: COLORS.green },
+  { key: "eod", label: "EOD Tasking", color: COLORS.amber },
+  { key: "search", label: "Search", color: COLORS.blue },
+  { key: "other", label: "Other", color: COLORS.textMuted },
+];
+
+const RIG_TYPES = [
+  { key: "SABA", color: COLORS.teal },
+  { key: "OSDS", color: COLORS.green },
+  { key: "CDLSE", color: COLORS.amber },
+  { key: "SOBA", color: COLORS.blue },
+  { key: "RABA", color: COLORS.red },
+];
+
+function rigInfo(key) {
+  return RIG_TYPES.find((r) => r.key === key) || { key: key || "Unknown", color: COLORS.textMuted };
+}
+
+/* ---------------- sample seed data (replace with real storage later) ---------------- */
+const SEED_DIVES = [
+  {
+    id: "d1",
+    date: "2026-07-29",
+    location: "HMNB Devonport, Basin 3",
+    diveNumber: "142",
+    setNumber: "4",
+    type: "training",
+    supervisor: "PO Reeves",
+    team: "LD Marsh, AB Coyle",
+    rig: "SABA",
+    waterTemp: "14°C",
+    visibility: "3m",
+    current: "Slack",
+    seaState: "1",
+    timeIn: "09:12",
+    timeOut: "09:58",
+    bottomTime: 46,
+    maxDepth: 18,
+    decoStops: "None required",
+    gas: "Air",
+    task: "Search pattern practice — jackstay",
+    notes: "Good trim throughout, comms clear.",
+  },
+  {
+    id: "d2",
+    date: "2026-07-22",
+    location: "Portland Harbour",
+    diveNumber: "141",
+    setNumber: "2",
+    type: "eod",
+    supervisor: "Lt Hargreaves",
+    team: "LD Marsh",
+    rig: "SABA",
+    waterTemp: "15°C",
+    visibility: "2m",
+    current: "Mild",
+    seaState: "2",
+    timeIn: "13:40",
+    timeOut: "14:22",
+    bottomTime: 42,
+    maxDepth: 22,
+    decoStops: "3m / 3min",
+    gas: "Air",
+    task: "Suspected ordnance ID — circular search",
+    notes: "Object identified as scrap metal, disposed via routine recovery.",
+  },
+  {
+    id: "d3",
+    date: "2026-07-22",
+    location: "Portland Harbour",
+    diveNumber: "140",
+    setNumber: "2",
+    type: "search",
+    supervisor: "Lt Hargreaves",
+    team: "AB Coyle",
+    rig: "OSDS",
+    waterTemp: "15°C",
+    visibility: "2m",
+    current: "Mild",
+    seaState: "2",
+    timeIn: "10:05",
+    timeOut: "10:51",
+    bottomTime: 46,
+    maxDepth: 19,
+    decoStops: "None required",
+    gas: "Air",
+    task: "Circular search pattern, area clearance",
+    notes: "",
+  },
+  {
+    id: "d4",
+    date: "2026-06-15",
+    location: "Loch Long",
+    diveNumber: "139",
+    setNumber: "6",
+    type: "exercise",
+    supervisor: "PO Reeves",
+    team: "Full section",
+    rig: "CDLSE",
+    waterTemp: "11°C",
+    visibility: "4m",
+    current: "None",
+    seaState: "1",
+    timeIn: "08:30",
+    timeOut: "09:34",
+    bottomTime: 64,
+    maxDepth: 28,
+    decoStops: "5m / 4min",
+    gas: "Nitrox 32",
+    task: "Joint exercise — simulated mine disposal",
+    notes: "Rebreather scrubber swapped mid-ex, no issues.",
+  },
+  {
+    id: "d5",
+    date: "2026-06-02",
+    location: "HMNB Devonport, Basin 3",
+    diveNumber: "138",
+    setNumber: "4",
+    type: "training",
+    supervisor: "PO Reeves",
+    team: "LD Marsh",
+    rig: "SABA",
+    waterTemp: "13°C",
+    visibility: "2.5m",
+    current: "Slack",
+    seaState: "1",
+    timeIn: "09:00",
+    timeOut: "09:41",
+    bottomTime: 41,
+    maxDepth: 15,
+    decoStops: "None required",
+    gas: "Air",
+    task: "Buoyancy and trim refresher",
+    notes: "",
+  },
+  {
+    id: "d6",
+    date: "2026-08-05",
+    location: "Horsea Island",
+    diveNumber: "143",
+    setNumber: "5",
+    type: "training",
+    supervisor: "PO Reeves",
+    team: "AB Coyle, LD Marsh",
+    rig: "SABA",
+    waterTemp: "16°C",
+    visibility: "1.5m",
+    current: "None",
+    seaState: "0",
+    timeIn: "08:50",
+    timeOut: "09:38",
+    bottomTime: 48,
+    maxDepth: 12,
+    decoStops: "None required",
+    gas: "Air",
+    task: "Confined water search drills — tactile search techniques",
+    notes: "",
+  },
+  {
+    id: "d7",
+    date: "2026-08-14",
+    location: "Portland Harbour",
+    diveNumber: "144",
+    setNumber: "3",
+    type: "eod",
+    supervisor: "Lt Hargreaves",
+    team: "LD Marsh",
+    rig: "SOBA",
+    waterTemp: "17°C",
+    visibility: "3m",
+    current: "Mild",
+    seaState: "1",
+    timeIn: "11:15",
+    timeOut: "12:01",
+    bottomTime: 46,
+    maxDepth: 24,
+    decoStops: "3m / 3min",
+    gas: "Air",
+    task: "Suspected ordnance response — charted datum investigation",
+    notes: "Datum investigated and cleared, no ordnance present.",
+  },
+  {
+    id: "d8",
+    date: "2026-08-27",
+    location: "HMNB Devonport, Basin 3",
+    diveNumber: "145",
+    setNumber: "5",
+    type: "other",
+    supervisor: "PO Reeves",
+    team: "AB Coyle",
+    rig: "SABA",
+    waterTemp: "17°C",
+    visibility: "2m",
+    current: "Slack",
+    seaState: "1",
+    timeIn: "10:00",
+    timeOut: "10:35",
+    bottomTime: 35,
+    maxDepth: 10,
+    decoStops: "None required",
+    gas: "Air",
+    task: "Hull inspection — routine ship's husbandry dive",
+    notes: "",
+  },
+  {
+    id: "d9",
+    date: "2026-09-03",
+    location: "Faslane, Gare Loch",
+    diveNumber: "146",
+    setNumber: "2",
+    type: "exercise",
+    supervisor: "Lt Hargreaves",
+    team: "Full section",
+    rig: "CDLSE",
+    waterTemp: "13°C",
+    visibility: "3.5m",
+    current: "None",
+    seaState: "1",
+    timeIn: "09:20",
+    timeOut: "10:28",
+    bottomTime: 68,
+    maxDepth: 26,
+    decoStops: "5m / 4min",
+    gas: "Nitrox 32",
+    task: "Joint exercise — simulated harbour clearance",
+    notes: "Full section rotation through search lanes, good comms throughout.",
+  },
+  {
+    id: "d10",
+    date: "2026-09-16",
+    location: "Portland Harbour",
+    diveNumber: "147",
+    setNumber: "3",
+    type: "search",
+    supervisor: "PO Reeves",
+    team: "LD Marsh, AB Coyle",
+    rig: "RABA",
+    waterTemp: "15°C",
+    visibility: "2.5m",
+    current: "Mild",
+    seaState: "2",
+    timeIn: "13:05",
+    timeOut: "13:52",
+    bottomTime: 47,
+    maxDepth: 20,
+    decoStops: "None required",
+    gas: "Air",
+    task: "Jackstay search — area clearance ahead of exercise",
+    notes: "",
+  },
+  {
+    id: "d11",
+    date: "2026-09-25",
+    location: "Horsea Island",
+    diveNumber: "148",
+    setNumber: "5",
+    type: "training",
+    supervisor: "PO Reeves",
+    team: "AB Coyle",
+    rig: "SABA",
+    waterTemp: "16°C",
+    visibility: "1.5m",
+    current: "None",
+    seaState: "0",
+    timeIn: "09:00",
+    timeOut: "09:44",
+    bottomTime: 44,
+    maxDepth: 12,
+    decoStops: "None required",
+    gas: "Air",
+    task: "Circular search refresher",
+    notes: "",
+  },
+];
+
+/* ---------------- qualification seed data ---------------- */
+const QUAL_STATUS = {
+  current: { label: "Current", color: COLORS.teal },
+  expiring: { label: "Expiring Soon", color: COLORS.amber },
+  expired: { label: "Expired", color: COLORS.red },
+  noExpiry: { label: "No Expiry", color: COLORS.textMuted },
+};
+
+const SEED_QUALS = [
+  {
+    id: "q1",
+    name: "Ships Team Diver (STD)",
+    authority: "Fleet Diving Squadron",
+    dateAwarded: "2023-03-14",
+    expiryDate: "2026-03-14",
+    certRef: "FDS/STD/0472",
+    notes: "",
+  },
+  {
+    id: "q2",
+    name: "Mine Clearance Diver Grade 2",
+    authority: "Defence Diving School",
+    dateAwarded: "2023-11-02",
+    expiryDate: "",
+    certRef: "DDS/MCD2/1188",
+    notes: "No periodic re-certification required; maintained via currency logs.",
+  },
+  {
+    id: "q3",
+    name: "Explosive Ordnance Disposal Level 1",
+    authority: "Defence EOD, Munitions & Search School",
+    dateAwarded: "2024-06-20",
+    expiryDate: "2026-09-20",
+    certRef: "DEMS/EOD1/0891",
+    notes: "",
+  },
+  {
+    id: "q4",
+    name: "Surface Supplied Diving Supervisor",
+    authority: "Fleet Diving Squadron",
+    dateAwarded: "2022-01-10",
+    expiryDate: "2026-11-15",
+    certRef: "FDS/SSDS/0231",
+    notes: "Renewal course booked ahead of expiry.",
+  },
+  {
+    id: "q5",
+    name: "First Aid at Work (Diving Ops)",
+    authority: "Royal Navy Medical Service",
+    dateAwarded: "2025-05-18",
+    expiryDate: "2028-05-18",
+    certRef: "RNMS/FAW/3390",
+    notes: "",
+  },
+];
+
+function qualStatus(qual) {
+  if (!qual.expiryDate) return "noExpiry";
+  const today = new Date();
+  const expiry = new Date(qual.expiryDate + "T00:00:00");
+  const daysLeft = (expiry - today) / (1000 * 60 * 60 * 24);
+  if (daysLeft < 0) return "expired";
+  if (daysLeft <= 60) return "expiring";
+  return "current";
+}
+
+/* ---------------- upcoming / planned dive seed data ---------------- */
+const SEED_UPCOMING_DIVES = [
+  {
+    id: "u1",
+    date: "2026-10-06",
+    location: "Portland Harbour",
+    type: "exercise",
+    note: "Joint exercise with Fleet Diving Unit 2",
+  },
+  {
+    id: "u2",
+    date: "2026-10-14",
+    location: "HMNB Devonport, Basin 3",
+    type: "training",
+    note: "Routine proficiency dive",
+  },
+  {
+    id: "u3",
+    date: "2026-10-29",
+    location: "Horsea Island",
+    type: "training",
+    note: "Search technique refresher",
+  },
+];
+
+
+const MONTH_NAMES = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+function monthLabel(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${MONTH_NAMES[d.getMonth()].toUpperCase()} ${d.getFullYear()}`;
+}
+
+function dayLabel(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  return `${days[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
+}
+
+function groupByMonth(dives) {
+  const groups = {};
+  for (const dive of dives) {
+    const key = monthLabel(dive.date);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(dive);
+  }
+  return Object.entries(groups).sort((a, b) => {
+    const da = new Date(a[1][0].date);
+    const db = new Date(b[1][0].date);
+    return db - da;
+  });
+}
+
+function fmtHoursMins(totalMins) {
+  const h = Math.floor(totalMins / 60);
+  const m = Math.round(totalMins % 60);
+  return `${h}h ${m}m`;
+}
+
+function typeInfo(key) {
+  return DIVE_TYPES.find((t) => t.key === key) || DIVE_TYPES[DIVE_TYPES.length - 1];
+}
+
+/* ============================================================
+   ROOT APP
+   ============================================================ */
+export default function FathomApp() {
+  const [view, setView] = useState("home");
+  const [tab, setTab] = useState("dives");
+  const [dives, setDives] = useState(SEED_DIVES);
+  const [quals, setQuals] = useState(SEED_QUALS);
+  const [upcoming, setUpcoming] = useState(SEED_UPCOMING_DIVES);
+  const [addingDive, setAddingDive] = useState(false);
+  const [addingQual, setAddingQual] = useState(false);
+
+  const handleAddDive = (dive) => {
+    setDives((prev) => [{ ...dive, id: `d${Date.now()}` }, ...prev]);
+    setAddingDive(false);
+  };
+
+  const handleAddQual = (qual) => {
+    setQuals((prev) => [{ ...qual, id: `q${Date.now()}` }, ...prev]);
+    setAddingQual(false);
+  };
+
+  const goToTab = (key) => {
+    setTab(key);
+    setView("tab");
+  };
+
+  const onASubScreen = addingDive || addingQual;
+
+  return (
+    <div style={styles.app}>
+      <style>{`
+        @import url('${FONT_IMPORT_URL}');
+        html, body { background: ${COLORS.bg}; margin: 0; padding: 0; }
+        * { box-sizing: border-box; }
+        .fathom-oswald { font-family: 'Oswald', sans-serif; }
+        .fathom-mono { font-family: 'IBM Plex Mono', monospace; }
+        .fathom-body { font-family: 'IBM Plex Sans', sans-serif; }
+        .fathom-scroll::-webkit-scrollbar { width: 6px; }
+        .fathom-scroll::-webkit-scrollbar-thumb { background: ${COLORS.divider}; border-radius: 3px; }
+        button { cursor: pointer; }
+      `}</style>
+
+      {!onASubScreen && (
+        <button style={styles.masthead} onClick={() => setView("home")}>
+          <BubblesIcon size={22} color={COLORS.teal} />
+          <div>
+            <div className="fathom-oswald" style={styles.mastheadTitle}>FATHOM</div>
+            <div className="fathom-mono" style={styles.mastheadSubtitle}>
+              FLEET ASSET TRACKING &amp; HISTORICAL OPERATIONS MANIFEST
+            </div>
+          </div>
+        </button>
+      )}
+
+      <div className="fathom-scroll" style={styles.screenArea}>
+        {addingDive ? (
+          <AddDiveForm
+            existingDives={dives}
+            onCancel={() => setAddingDive(false)}
+            onSave={handleAddDive}
+          />
+        ) : addingQual ? (
+          <AddQualificationForm
+            onCancel={() => setAddingQual(false)}
+            onSave={handleAddQual}
+          />
+        ) : view === "home" ? (
+          <HomeScreen dives={dives} quals={quals} upcoming={upcoming} onGoToTab={goToTab} />
+        ) : tab === "dives" ? (
+          <DivesTab dives={dives} onAddDive={() => setAddingDive(true)} />
+        ) : tab === "stats" ? (
+          <StatsTab dives={dives} />
+        ) : (
+          <QualificationsTab quals={quals} onAddQual={() => setAddingQual(true)} />
+        )}
+      </div>
+
+      {!onASubScreen && (
+        <BottomNav view={view} tab={tab} onNavigate={goToTab} />
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   HOME SCREEN (landing page)
+   ============================================================ */
+function HomeScreen({ dives, quals, upcoming, onGoToTab }) {
+  const diverId = "FROSTIE";
+
+  const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
+
+  const outOfDateQuals = quals.filter((q) => {
+    const s = qualStatus(q);
+    return s === "expired" || s === "expiring";
+  });
+
+  return (
+    <div style={styles.tabContent}>
+      {/* Profile summary */}
+      <div style={styles.homeProfileCard}>
+        <div style={styles.profileIconWrap}>
+          <User size={20} color={COLORS.teal} strokeWidth={2} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div className="fathom-oswald" style={styles.homeProfileId}>{diverId}</div>
+          <div className="fathom-mono" style={styles.homeProfileStats}>
+            {dives.length} DIVES · {fmtHoursMins(totalMins)} UNDERWATER
+          </div>
+        </div>
+      </div>
+
+      {/* Qualifications status */}
+      <div className="fathom-mono" style={styles.categoryLabel}>QUALIFICATIONS</div>
+      <button style={{ ...styles.panelCard, width: "100%", display: "block", textAlign: "left" }} onClick={() => onGoToTab("quals")}>
+        {outOfDateQuals.length === 0 ? (
+          <div style={styles.qualsUpToDateRow}>
+            <div style={{ ...styles.typeDot, background: COLORS.teal, width: 10, height: 10 }} />
+            <span className="fathom-body" style={styles.qualsUpToDateText}>
+              All qualifications up to date
+            </span>
+          </div>
+        ) : (
+          <div>
+            {outOfDateQuals.map((q) => {
+              const status = QUAL_STATUS[qualStatus(q)];
+              return (
+                <div key={q.id} style={styles.qualsIssueRow}>
+                  <div style={{ ...styles.typeDot, background: status.color }} />
+                  <span className="fathom-body" style={styles.qualsIssueText}>{q.name}</span>
+                  <span className="fathom-mono" style={{ ...styles.qualsIssueStatus, color: status.color }}>
+                    {status.label.toUpperCase()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </button>
+
+      {/* Upcoming dives */}
+      <div className="fathom-mono" style={{ ...styles.categoryLabel, marginTop: 22 }}>
+        UPCOMING DIVES
+      </div>
+      {upcoming.length === 0 ? (
+        <div style={styles.panelCard}>
+          <span className="fathom-body" style={{ color: COLORS.textMuted, fontSize: 13 }}>
+            No upcoming dives planned.
+          </span>
+        </div>
+      ) : (
+        upcoming.map((u) => {
+          const info = typeInfo(u.type);
+          return (
+            <div key={u.id} style={styles.card}>
+              <div style={{ ...styles.cardHeader, cursor: "default" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ ...styles.typeDot, background: info.color }} />
+                  <div style={{ textAlign: "left" }}>
+                    <div className="fathom-oswald" style={styles.cardTitle}>{u.location}</div>
+                    <div className="fathom-mono" style={styles.cardSubtitle}>
+                      {dayLabel(u.date)} · {info.label}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: "0 16px 14px" }}>
+                <span className="fathom-body" style={{ color: COLORS.textMuted, fontSize: 12.5 }}>
+                  {u.note}
+                </span>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   BOTTOM NAV
+   ============================================================ */
+function BottomNav({ view, tab, onNavigate }) {
+  const items = [
+    { key: "quals", label: "Records", icon: Award },
+    { key: "dives", label: "Dives", icon: Waves },
+    { key: "stats", label: "Stats", icon: BarChart3 },
+  ];
+  return (
+    <nav style={styles.nav}>
+      {items.map(({ key, label, icon: Icon }) => {
+        const active = view === "tab" && tab === key;
+        return (
+          <button
+            key={key}
+            onClick={() => onNavigate(key)}
+            style={{
+              ...styles.navBtn,
+              color: active ? COLORS.teal : COLORS.textMuted,
+            }}
+          >
+            <div
+              style={{
+                ...styles.navIconWrap,
+                background: active ? COLORS.tealDark : "transparent",
+                border: active ? `1px solid ${COLORS.teal}` : "1px solid transparent",
+              }}
+            >
+              <Icon size={20} strokeWidth={2} color={active ? COLORS.teal : COLORS.textMuted} />
+            </div>
+            <span className="fathom-mono" style={styles.navLabel}>{label.toUpperCase()}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ============================================================
+   DIVES TAB
+   ============================================================ */
+function DivesTab({ dives, onAddDive }) {
+  const [expandedId, setExpandedId] = useState(null);
+  const grouped = useMemo(() => groupByMonth(dives), [dives]);
+
+  return (
+    <div style={styles.tabContent}>
+      <Header title="Dives" subtitle={`${dives.length} logged`} />
+
+      <button style={styles.addDiveTile} onClick={onAddDive}>
+        <Plus size={20} color={COLORS.teal} />
+        <span className="fathom-oswald" style={styles.addDiveText}>ADD DIVE</span>
+      </button>
+
+      {grouped.map(([month, monthDives]) => (
+        <div key={month} style={{ marginTop: 22 }}>
+          <div className="fathom-mono" style={styles.categoryLabel}>{month}</div>
+          {monthDives.map((dive) => (
+            <DiveCard
+              key={dive.id}
+              dive={dive}
+              expanded={expandedId === dive.id}
+              onToggle={() =>
+                setExpandedId(expandedId === dive.id ? null : dive.id)
+              }
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DiveCard({ dive, expanded, onToggle }) {
+  const info = typeInfo(dive.type);
+  return (
+    <div style={styles.card}>
+      <button style={styles.cardHeader} onClick={onToggle}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ ...styles.typeDot, background: info.color }} />
+          <div style={{ textAlign: "left" }}>
+            <div className="fathom-oswald" style={styles.cardTitle}>
+              {dive.location}
+            </div>
+            <div className="fathom-mono" style={styles.cardSubtitle}>
+              {dayLabel(dive.date)} · Dive #{dive.diveNumber}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ textAlign: "right" }}>
+            <div className="fathom-mono" style={styles.cardStat}>
+              {dive.bottomTime} mins | {dive.maxDepth}m
+            </div>
+            <div className="fathom-mono" style={styles.cardStatLabel}>TIME | MAX DEPTH</div>
+          </div>
+          <ChevronDown
+            size={18}
+            color={COLORS.textMuted}
+            style={{
+              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s ease",
+            }}
+          />
+        </div>
+      </button>
+
+      {expanded && (
+        <div style={styles.cardExpanded}>
+          <div style={styles.detailGrid}>
+            <Detail label="Dive Supervisor" value={dive.supervisor} />
+            <Detail label="Dive Team" value={dive.team} />
+            <Detail label="Set Number" value={dive.setNumber} />
+            <Detail label="Type" value={info.label} dotColor={info.color} />
+            <Detail label="Rig" value={dive.rig} dotColor={rigInfo(dive.rig).color} />
+            <Detail label="Gas" value={dive.gas} />
+            <Detail label="Water Temp" value={dive.waterTemp} />
+            <Detail label="Visibility" value={dive.visibility} />
+            <Detail label="Current" value={dive.current} />
+            <Detail label="Sea State" value={dive.seaState} />
+            <Detail label="Time In / Out" value={`${dive.timeIn} — ${dive.timeOut}`} />
+            <Detail label="Bottom Time" value={`${dive.bottomTime} min`} />
+            <Detail label="Deco Stops" value={dive.decoStops} />
+          </div>
+          <Detail label="Task" value={dive.task} full />
+          {dive.notes && <Detail label="Notes" value={dive.notes} full />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Detail({ label, value, full, dotColor }) {
+  return (
+    <div style={{ gridColumn: full ? "1 / -1" : "auto", marginBottom: 12 }}>
+      <div className="fathom-mono" style={styles.detailLabel}>{label.toUpperCase()}</div>
+      <div className="fathom-body" style={{ ...styles.detailValue, display: "flex", alignItems: "center", gap: 6 }}>
+        {dotColor && <span style={{ ...styles.typeChipDot, background: dotColor }} />}
+        {value || "—"}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   ADD DIVE FORM
+   ============================================================ */
+function AddDiveForm({ existingDives, onCancel, onSave }) {
+  const nextDiveNumber = useMemo(() => {
+    const highest = existingDives.reduce(
+      (max, d) => Math.max(max, parseInt(d.diveNumber, 10) || 0),
+      0
+    );
+    return String(highest + 1);
+  }, [existingDives]);
+
+  const [form, setForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    location: "",
+    setNumber: "",
+    type: "training",
+    supervisor: "",
+    team: "",
+    rig: "SABA",
+    waterTemp: "",
+    visibility: "",
+    current: "",
+    seaState: "",
+    timeIn: "",
+    timeOut: "",
+    bottomTime: "",
+    maxDepth: "",
+    decoStops: "",
+    gas: "Air",
+    task: "",
+    notes: "",
+  });
+
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const canSave = form.location && form.date && form.maxDepth;
+
+  return (
+    <div style={styles.tabContent}>
+      <div style={styles.formHeader}>
+        <button onClick={onCancel} style={styles.iconBtn}>
+          <X size={20} color={COLORS.textMuted} />
+        </button>
+        <span className="fathom-oswald" style={styles.formHeaderTitle}>NEW DIVE LOG</span>
+        <div style={{ width: 32 }} />
+      </div>
+
+      <Field label="Date" type="date" value={form.date} onChange={set("date")} />
+      <Field label="Location" value={form.location} onChange={set("location")} placeholder="Dive site name" />
+      <Field label="Set Number" value={form.setNumber} onChange={set("setNumber")} placeholder="e.g. 4" />
+
+      <FieldLabel label="Purpose of Dive" />
+      <div style={styles.typeRow}>
+        {DIVE_TYPES.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setForm((f) => ({ ...f, type: t.key }))}
+            style={{
+              ...styles.typeChip,
+              borderColor: form.type === t.key ? t.color : COLORS.divider,
+              background: form.type === t.key ? COLORS.tealDark : COLORS.card,
+              color: form.type === t.key ? t.color : COLORS.textMuted,
+            }}
+          >
+            <span style={{ ...styles.typeChipDot, background: t.color }} />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <Field label="Dive Supervisor" value={form.supervisor} onChange={set("supervisor")} placeholder="Name / Rate" />
+      <Field label="Dive Team" value={form.team} onChange={set("team")} placeholder="Names / rates" />
+
+      <FieldLabel label="Rig" />
+      <div style={{ ...styles.typeRow, marginBottom: 16 }}>
+        {RIG_TYPES.map((r) => (
+          <button
+            key={r.key}
+            onClick={() => setForm((f) => ({ ...f, rig: r.key }))}
+            style={{
+              ...styles.typeChip,
+              borderColor: form.rig === r.key ? r.color : COLORS.divider,
+              background: form.rig === r.key ? COLORS.tealDark : COLORS.card,
+              color: form.rig === r.key ? r.color : COLORS.textMuted,
+            }}
+          >
+            {r.key}
+          </button>
+        ))}
+      </div>
+
+      <Field label="Breathing Gas" value={form.gas} onChange={set("gas")} />
+
+      <div style={styles.fieldRow}>
+        <Field label="Water Temp" value={form.waterTemp} onChange={set("waterTemp")} placeholder="°C" half />
+        <Field label="Visibility" value={form.visibility} onChange={set("visibility")} placeholder="m" half />
+      </div>
+      <div style={styles.fieldRow}>
+        <Field label="Current" value={form.current} onChange={set("current")} half />
+        <Field label="Sea State" value={form.seaState} onChange={set("seaState")} half />
+      </div>
+      <div style={styles.fieldRow}>
+        <Field label="Time In" type="time" value={form.timeIn} onChange={set("timeIn")} half />
+        <Field label="Time Out" type="time" value={form.timeOut} onChange={set("timeOut")} half />
+      </div>
+      <div style={styles.fieldRow}>
+        <Field label="Bottom Time (min)" type="number" value={form.bottomTime} onChange={set("bottomTime")} half />
+        <Field label="Max Depth (m)" type="number" value={form.maxDepth} onChange={set("maxDepth")} half />
+      </div>
+      <Field label="Decompression Stops" value={form.decoStops} onChange={set("decoStops")} placeholder="e.g. 3m / 3min, or None required" />
+      <Field label="Task Performed" value={form.task} onChange={set("task")} textarea />
+      <Field label="Notes / Incidents" value={form.notes} onChange={set("notes")} textarea />
+
+      <button
+        disabled={!canSave}
+        onClick={() =>
+          onSave({
+            ...form,
+            diveNumber: nextDiveNumber,
+            bottomTime: Number(form.bottomTime) || 0,
+            maxDepth: Number(form.maxDepth) || 0,
+          })
+        }
+        style={{
+          ...styles.saveBtn,
+          opacity: canSave ? 1 : 0.4,
+          cursor: canSave ? "pointer" : "not-allowed",
+        }}
+      >
+        <span className="fathom-oswald" style={styles.saveBtnText}>SAVE DIVE LOG</span>
+      </button>
+    </div>
+  );
+}
+
+function FieldLabel({ label }) {
+  return <div className="fathom-mono" style={styles.fieldLabel}>{label.toUpperCase()}</div>;
+}
+
+function Field({ label, value, onChange, type = "text", placeholder, half, textarea }) {
+  return (
+    <div style={{ flex: half ? 1 : "auto", marginBottom: 16 }}>
+      <FieldLabel label={label} />
+      {textarea ? (
+        <textarea
+          className="fathom-body"
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          rows={3}
+          style={styles.input}
+        />
+      ) : (
+        <input
+          className="fathom-body"
+          type={type}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          style={styles.input}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   STATS TAB
+   ============================================================ */
+function StatsTab({ dives }) {
+  const [showProfile, setShowProfile] = useState(false);
+
+  // Placeholder until shared Diver ID login is wired up between Fathom and SLATE
+  const diverId = "DVR_FROSTIE";
+  const displayId = diverId.replace(/^DVR_/, "");
+
+  const stats = useMemo(() => {
+    const now = new Date();
+    const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
+    const thisMonthMins = dives
+      .filter((d) => {
+        const dt = new Date(d.date + "T00:00:00");
+        return dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
+      })
+      .reduce((s, d) => s + d.bottomTime, 0);
+    const deepest = dives.reduce((max, d) => Math.max(max, d.maxDepth), 0);
+    const avgMins = dives.length ? totalMins / dives.length : 0;
+
+    const byType = {};
+    for (const t of DIVE_TYPES) byType[t.key] = 0;
+    for (const d of dives) byType[d.type] = (byType[d.type] || 0) + 1;
+
+    const byRig = {};
+    for (const r of RIG_TYPES) byRig[r.key] = 0;
+    for (const d of dives) byRig[d.rig] = (byRig[d.rig] || 0) + 1;
+
+    // last 6 months dive counts
+    const monthCounts = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const count = dives.filter((dv) => {
+        const dt = new Date(dv.date + "T00:00:00");
+        return dt.getMonth() === d.getMonth() && dt.getFullYear() === d.getFullYear();
+      }).length;
+      monthCounts.push({ label: MONTH_NAMES[d.getMonth()].slice(0, 3), count });
+    }
+
+    return { totalMins, thisMonthMins, deepest, avgMins, byType, byRig, monthCounts, total: dives.length };
+  }, [dives]);
+
+  const maxMonthCount = Math.max(1, ...stats.monthCounts.map((m) => m.count));
+  const maxTypeCount = Math.max(1, ...Object.values(stats.byType));
+
+  return (
+    <div style={styles.tabContent}>
+      <div style={styles.statsHeaderRow}>
+        <div>
+          <div className="fathom-oswald" style={styles.pageTitle}>STATS</div>
+          <div className="fathom-mono" style={styles.pageSubtitle}>Dive record summary</div>
+        </div>
+        <button style={styles.profileBtn} onClick={() => setShowProfile(true)}>
+          <div style={styles.profileIconWrap}>
+            <User size={18} color={COLORS.teal} strokeWidth={2} />
+          </div>
+          <span className="fathom-mono" style={styles.profileIdLabel}>{displayId}</span>
+        </button>
+      </div>
+
+      {showProfile && (
+        <ProfileModal
+          diverId={displayId}
+          totalDives={stats.total}
+          totalTime={fmtHoursMins(stats.totalMins)}
+          onClose={() => setShowProfile(false)}
+        />
+      )}
+
+      <div style={styles.statGrid}>
+        <StatTile label="Total Dive Time" value={fmtHoursMins(stats.totalMins)} />
+        <StatTile label="This Month" value={fmtHoursMins(stats.thisMonthMins)} />
+        <StatTile label="Total Dives" value={String(stats.total)} />
+        <StatTile label="Deepest Dive" value={`${stats.deepest}m`} />
+        <StatTile label="Avg Duration" value={fmtHoursMins(stats.avgMins)} />
+        <StatTile label="Avg Depth" value={`${dives.length ? Math.round(dives.reduce((s,d)=>s+d.maxDepth,0)/dives.length) : 0}m`} />
+      </div>
+
+      <div className="fathom-mono" style={styles.categoryLabel}>DIVE TYPE BREAKDOWN</div>
+      <div style={styles.panelCard}>
+        {DIVE_TYPES.map((t) => {
+          const count = stats.byType[t.key] || 0;
+          const pct = maxTypeCount ? (count / maxTypeCount) * 100 : 0;
+          return (
+            <div key={t.key} style={{ marginBottom: 14 }}>
+              <div style={styles.barRow}>
+                <span className="fathom-body" style={styles.barLabel}>{t.label}</span>
+                <span className="fathom-mono" style={styles.barCount}>{count}</span>
+              </div>
+              <div style={styles.barTrack}>
+                <div style={{ ...styles.barFill, width: `${pct}%`, background: t.color }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="fathom-mono" style={styles.categoryLabel}>DIVES PER MONTH</div>
+      <div style={styles.panelCard}>
+        <div style={styles.histogram}>
+          {stats.monthCounts.map((m) => (
+            <div key={m.label} style={styles.histoCol}>
+              <div style={styles.histoBarTrack}>
+                <div
+                  style={{
+                    ...styles.histoBarFill,
+                    height: `${(m.count / maxMonthCount) * 70 + (m.count ? 6 : 0)}px`,
+                  }}
+                />
+              </div>
+              <span className="fathom-mono" style={styles.histoLabel}>{m.label}</span>
+              <span className="fathom-mono" style={styles.histoCount}>{m.count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="fathom-mono" style={styles.categoryLabel}>RIG USAGE</div>
+      <div style={{ ...styles.panelCard, display: "flex", alignItems: "center", gap: 18 }}>
+        <PieChart
+          data={RIG_TYPES.map((r) => ({ key: r.key, color: r.color, value: stats.byRig[r.key] || 0 }))}
+        />
+        <div style={{ flex: 1 }}>
+          {RIG_TYPES.map((r) => {
+            const count = stats.byRig[r.key] || 0;
+            const pct = stats.total ? Math.round((count / stats.total) * 100) : 0;
+            return (
+              <div key={r.key} style={styles.pieLegendRow}>
+                <span style={{ ...styles.typeChipDot, background: r.color }} />
+                <span className="fathom-body" style={styles.pieLegendLabel}>{r.key}</span>
+                <span className="fathom-mono" style={styles.pieLegendValue}>
+                  {count} · {pct}%
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PieChart({ data, size = 110 }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const radius = size / 2;
+  const cx = radius;
+  const cy = radius;
+
+  if (!total) {
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+        <circle cx={cx} cy={cy} r={radius - 2} fill="none" stroke={COLORS.divider} strokeWidth="2" />
+      </svg>
+    );
+  }
+
+  let angle = -90; // start at 12 o'clock
+  const slices = data
+    .filter((d) => d.value > 0)
+    .map((d) => {
+      const sweep = (d.value / total) * 360;
+      const startAngle = angle;
+      const endAngle = angle + sweep;
+      angle = endAngle;
+
+      // Full circle edge case: draw two half-arcs
+      if (sweep >= 359.999) {
+        return (
+          <circle key={d.key} cx={cx} cy={cy} r={radius - 2} fill={d.color} />
+        );
+      }
+
+      const toXY = (deg) => {
+        const rad = (deg * Math.PI) / 180;
+        return [cx + (radius - 2) * Math.cos(rad), cy + (radius - 2) * Math.sin(rad)];
+      };
+      const [x1, y1] = toXY(startAngle);
+      const [x2, y2] = toXY(endAngle);
+      const largeArc = sweep > 180 ? 1 : 0;
+      const path = `M ${cx} ${cy} L ${x1} ${y1} A ${radius - 2} ${radius - 2} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+      return <path key={d.key} d={path} fill={d.color} />;
+    });
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      {slices}
+      <circle cx={cx} cy={cy} r={radius * 0.42} fill={COLORS.card} />
+    </svg>
+  );
+}
+
+function StatTile({ label, value }) {
+  return (
+    <div style={styles.statTile}>
+      <div className="fathom-mono" style={styles.statValue}>{value}</div>
+      <div className="fathom-mono" style={styles.statLabel}>{label.toUpperCase()}</div>
+    </div>
+  );
+}
+
+function ProfileModal({ diverId, totalDives, totalTime, onClose }) {
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+        <button style={styles.modalClose} onClick={onClose}>
+          <X size={18} color={COLORS.textMuted} />
+        </button>
+        <div style={styles.modalIconWrap}>
+          <User size={32} color={COLORS.teal} strokeWidth={1.75} />
+        </div>
+        <div className="fathom-oswald" style={styles.modalDiverId}>{diverId}</div>
+        <div style={styles.modalStatsRow}>
+          <div style={styles.modalStat}>
+            <div className="fathom-mono" style={styles.modalStatValue}>{totalDives}</div>
+            <div className="fathom-mono" style={styles.modalStatLabel}>DIVES LOGGED</div>
+          </div>
+          <div style={styles.modalStat}>
+            <div className="fathom-mono" style={styles.modalStatValue}>{totalTime}</div>
+            <div className="fathom-mono" style={styles.modalStatLabel}>TIME UNDERWATER</div>
+          </div>
+        </div>
+
+        <div style={styles.modalDivider} />
+
+        <button style={styles.backupBtn}>
+          <UploadCloud size={16} color={COLORS.teal} strokeWidth={2} />
+          <span className="fathom-mono" style={styles.backupBtnText}>BACK UP DATA</span>
+        </button>
+
+        <button style={styles.logoutBtn}>
+          <LogOut size={16} color={COLORS.red} strokeWidth={2} />
+          <span className="fathom-mono" style={styles.logoutBtnText}>LOG OUT</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   QUALIFICATIONS TAB
+   ============================================================ */
+function QualificationsTab({ quals, onAddQual }) {
+  const [expandedId, setExpandedId] = useState(null);
+
+  const { expired, expiringSoon, upToDate } = useMemo(() => {
+    const expired = quals.filter((q) => qualStatus(q) === "expired");
+    const expiringSoon = quals.filter((q) => qualStatus(q) === "expiring");
+    const subOrder = { current: 0, noExpiry: 1 };
+    const upToDate = quals
+      .filter((q) => qualStatus(q) === "current" || qualStatus(q) === "noExpiry")
+      .sort((a, b) => subOrder[qualStatus(a)] - subOrder[qualStatus(b)]);
+    return { expired, expiringSoon, upToDate };
+  }, [quals]);
+
+  return (
+    <div style={styles.tabContent}>
+      <Header title="Qualifications" subtitle={`${quals.length} on record`} />
+
+      <button style={styles.addDiveTile} onClick={onAddQual}>
+        <Plus size={20} color={COLORS.teal} />
+        <span className="fathom-oswald" style={styles.addDiveText}>ADD QUALIFICATION</span>
+      </button>
+
+      {expired.length > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <div className="fathom-mono" style={{ ...styles.categoryLabel, color: COLORS.red }}>
+            EXPIRED
+          </div>
+          {expired.map((qual) => (
+            <QualCard
+              key={qual.id}
+              qual={qual}
+              expanded={expandedId === qual.id}
+              onToggle={() => setExpandedId(expandedId === qual.id ? null : qual.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {expiringSoon.length > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <div className="fathom-mono" style={{ ...styles.categoryLabel, color: COLORS.amber }}>
+            EXPIRING SOON
+          </div>
+          {expiringSoon.map((qual) => (
+            <QualCard
+              key={qual.id}
+              qual={qual}
+              expanded={expandedId === qual.id}
+              onToggle={() => setExpandedId(expandedId === qual.id ? null : qual.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 22 }}>
+        <div className="fathom-mono" style={{ ...styles.categoryLabel, color: COLORS.teal }}>
+          UP TO DATE
+        </div>
+        {upToDate.map((qual) => (
+          <QualCard
+            key={qual.id}
+            qual={qual}
+            expanded={expandedId === qual.id}
+            onToggle={() => setExpandedId(expandedId === qual.id ? null : qual.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QualCard({ qual, expanded, onToggle }) {
+  const statusKey = qualStatus(qual);
+  const status = QUAL_STATUS[statusKey];
+
+  return (
+    <div style={styles.card}>
+      <button style={styles.cardHeader} onClick={onToggle}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ ...styles.typeDot, background: status.color }} />
+          <div style={{ textAlign: "left" }}>
+            <div className="fathom-oswald" style={styles.cardTitle}>{qual.name}</div>
+            <div className="fathom-mono" style={styles.cardSubtitle}>{qual.authority}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ textAlign: "right" }}>
+            <div className="fathom-mono" style={{ ...styles.cardStat, color: status.color }}>
+              {status.label}
+            </div>
+            <div className="fathom-mono" style={styles.cardStatLabel}>
+              {qual.expiryDate ? `EXP ${qual.expiryDate}` : "STATUS"}
+            </div>
+          </div>
+          <ChevronDown
+            size={18}
+            color={COLORS.textMuted}
+            style={{
+              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s ease",
+            }}
+          />
+        </div>
+      </button>
+
+      {expanded && (
+        <div style={styles.cardExpanded}>
+          <div style={styles.detailGrid}>
+            <Detail label="Status" value={status.label} dotColor={status.color} />
+            <Detail label="Awarding Authority" value={qual.authority} />
+            <Detail label="Date Awarded" value={qual.dateAwarded} />
+            <Detail label="Expiry Date" value={qual.expiryDate || "No expiry"} />
+            <Detail label="Certificate Ref" value={qual.certRef} />
+          </div>
+          {qual.notes && <Detail label="Notes" value={qual.notes} full />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   ADD QUALIFICATION FORM
+   ============================================================ */
+function AddQualificationForm({ onCancel, onSave }) {
+  const [form, setForm] = useState({
+    name: "",
+    authority: "",
+    dateAwarded: new Date().toISOString().slice(0, 10),
+    expiryDate: "",
+    certRef: "",
+    notes: "",
+  });
+
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const canSave = form.name && form.authority && form.dateAwarded;
+
+  return (
+    <div style={styles.tabContent}>
+      <div style={styles.formHeader}>
+        <button onClick={onCancel} style={styles.iconBtn}>
+          <X size={20} color={COLORS.textMuted} />
+        </button>
+        <span className="fathom-oswald" style={styles.formHeaderTitle}>NEW QUALIFICATION</span>
+        <div style={{ width: 32 }} />
+      </div>
+
+      <Field label="Qualification Name" value={form.name} onChange={set("name")} placeholder="e.g. Mine Clearance Diver Grade 2" />
+      <Field label="Awarding Authority" value={form.authority} onChange={set("authority")} placeholder="e.g. Defence Diving School" />
+      <div style={styles.fieldRow}>
+        <Field label="Date Awarded" type="date" value={form.dateAwarded} onChange={set("dateAwarded")} half />
+        <Field label="Expiry Date" type="date" value={form.expiryDate} onChange={set("expiryDate")} half />
+      </div>
+      <Field label="Certificate / Reference No." value={form.certRef} onChange={set("certRef")} placeholder="e.g. FDS/STD/0472" />
+      <Field label="Notes" value={form.notes} onChange={set("notes")} textarea />
+
+      <div className="fathom-body" style={{ color: COLORS.textDim, fontSize: 11.5, marginBottom: 16, lineHeight: 1.5 }}>
+        Leave Expiry Date blank for qualifications that don't lapse.
+      </div>
+
+      <button
+        disabled={!canSave}
+        onClick={() => onSave(form)}
+        style={{
+          ...styles.saveBtn,
+          opacity: canSave ? 1 : 0.4,
+          cursor: canSave ? "pointer" : "not-allowed",
+        }}
+      >
+        <span className="fathom-oswald" style={styles.saveBtnText}>SAVE QUALIFICATION</span>
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================
+   SHARED
+   ============================================================ */
+function Header({ title, subtitle }) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div className="fathom-oswald" style={styles.pageTitle}>{title.toUpperCase()}</div>
+      <div className="fathom-mono" style={styles.pageSubtitle}>{subtitle}</div>
+    </div>
+  );
+}
+
+function BubblesIcon({ size = 22, color = COLORS.teal }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="9" cy="15.5" r="6" />
+      <circle cx="18" cy="8" r="3.5" />
+      <circle cx="12.5" cy="3" r="1.8" />
+    </svg>
+  );
+}
+
+/* ============================================================
+   STYLES
+   ============================================================ */
+const styles = {
+  app: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100dvh",
+    maxWidth: 480,
+    margin: "0 auto",
+    background: COLORS.bg,
+    color: COLORS.textPrimary,
+    position: "relative",
+    overflow: "hidden",
+  },
+  screenArea: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "24px 18px 100px",
+  },
+  tabContent: { display: "flex", flexDirection: "column" },
+  masthead: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "18px 18px 14px",
+    flexShrink: 0,
+    background: "transparent",
+    border: "none",
+    borderBottom: `1px solid ${COLORS.divider}`,
+    width: "100%",
+    textAlign: "left",
+  },
+  mastheadTitle: { fontSize: 18, fontWeight: 600, letterSpacing: 1.5, color: COLORS.textBright, lineHeight: 1.1 },
+  mastheadSubtitle: { fontSize: 8.5, color: COLORS.textMuted, letterSpacing: 0.6, marginTop: 3, lineHeight: 1.3 },
+  pageTitle: { fontSize: 26, fontWeight: 600, letterSpacing: 1, color: COLORS.textBright },
+  pageSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 4, letterSpacing: 0.5 },
+
+  statsHeaderRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 18,
+  },
+  profileBtn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 5,
+    background: "transparent",
+    border: "none",
+    padding: 0,
+  },
+  profileIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: "50%",
+    background: COLORS.tealDark,
+    border: `1px solid ${COLORS.teal}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileIdLabel: { fontSize: 9.5, color: COLORS.textMuted, letterSpacing: 0.5 },
+
+  homeProfileCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    background: COLORS.card,
+    border: `1px solid ${COLORS.cardOutline}`,
+    borderRadius: 12,
+    padding: "14px 16px",
+    marginBottom: 22,
+  },
+  homeProfileId: { fontSize: 16, letterSpacing: 1, color: COLORS.textBright },
+  homeProfileStats: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 3, letterSpacing: 0.3 },
+  qualsUpToDateRow: { display: "flex", alignItems: "center", gap: 10 },
+  qualsUpToDateText: { fontSize: 13.5, color: COLORS.textPrimary },
+  qualsIssueRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  qualsIssueText: { fontSize: 13, color: COLORS.textPrimary, flex: 1 },
+  qualsIssueStatus: { fontSize: 10, letterSpacing: 0.5, flexShrink: 0 },
+
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(10, 13, 15, 0.7)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 50,
+    padding: 24,
+  },
+  modalCard: {
+    position: "relative",
+    width: "100%",
+    maxWidth: 320,
+    background: COLORS.card,
+    border: `1px solid ${COLORS.cardOutline}`,
+    borderRadius: 16,
+    padding: "32px 24px 24px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  modalClose: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    background: "transparent",
+    border: "none",
+    padding: 4,
+  },
+  modalIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    background: COLORS.tealDark,
+    border: `1px solid ${COLORS.teal}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  modalDiverId: { fontSize: 18, letterSpacing: 1, color: COLORS.textBright, marginBottom: 18 },
+  modalStatsRow: { display: "flex", gap: 24, width: "100%", justifyContent: "center" },
+  modalStat: { textAlign: "center" },
+  modalStatValue: { fontSize: 17, color: COLORS.teal },
+  modalStatLabel: { fontSize: 9, color: COLORS.textMuted, marginTop: 4, letterSpacing: 0.5 },
+  modalDivider: {
+    width: "100%",
+    height: 1,
+    background: COLORS.divider,
+    margin: "22px 0 18px",
+  },
+  backupBtn: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: "12px",
+    borderRadius: 10,
+    background: COLORS.tealDark,
+    border: `1px solid ${COLORS.teal}`,
+    marginBottom: 10,
+  },
+  backupBtnText: { fontSize: 12.5, letterSpacing: 1, color: COLORS.teal },
+  logoutBtn: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: "12px",
+    borderRadius: 10,
+    background: "transparent",
+    border: `1px solid ${COLORS.divider}`,
+  },
+  logoutBtnText: { fontSize: 12.5, letterSpacing: 1, color: COLORS.red },
+
+  addDiveTile: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    width: "100%",
+    padding: "16px",
+    borderRadius: 12,
+    border: `1.5px dashed ${COLORS.teal}`,
+    background: COLORS.tealDark,
+    color: COLORS.teal,
+  },
+  addDiveText: { fontSize: 14, letterSpacing: 1 },
+
+  categoryLabel: {
+    fontSize: 11,
+    letterSpacing: 1.5,
+    color: COLORS.textMuted,
+    marginBottom: 10,
+    marginTop: 4,
+  },
+
+  card: {
+    background: COLORS.card,
+    borderRadius: 12,
+    border: `1px solid ${COLORS.cardOutline}`,
+    marginBottom: 10,
+    overflow: "hidden",
+  },
+  cardHeader: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "14px 16px",
+    background: "transparent",
+    border: "none",
+    color: "inherit",
+  },
+  typeDot: { width: 9, height: 9, borderRadius: "50%", flexShrink: 0 },
+  cardTitle: { fontSize: 15, fontWeight: 500, color: COLORS.textBright },
+  cardSubtitle: { fontSize: 11, color: COLORS.textMuted, marginTop: 3 },
+  cardStat: { fontSize: 13, color: COLORS.teal, whiteSpace: "nowrap" },
+  cardStatLabel: { fontSize: 9, color: COLORS.textDim, marginTop: 2, letterSpacing: 0.5 },
+
+  cardExpanded: {
+    padding: "4px 16px 16px",
+    borderTop: `1px solid ${COLORS.divider}`,
+    marginTop: 2,
+  },
+  detailGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    columnGap: 14,
+    marginTop: 12,
+  },
+  detailLabel: { fontSize: 9.5, color: COLORS.textDim, letterSpacing: 0.5, marginBottom: 3 },
+  detailValue: { fontSize: 13.5, color: COLORS.textPrimary, lineHeight: 1.4 },
+
+  formHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  formHeaderTitle: { fontSize: 16, letterSpacing: 1, color: COLORS.textBright },
+  iconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    background: COLORS.card,
+    border: `1px solid ${COLORS.divider}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fieldLabel: { fontSize: 10, letterSpacing: 1, color: COLORS.textMuted, marginBottom: 6 },
+  fieldRow: { display: "flex", gap: 12 },
+  input: {
+    width: "100%",
+    background: COLORS.panel,
+    border: `1px solid ${COLORS.divider}`,
+    borderRadius: 8,
+    padding: "10px 12px",
+    color: COLORS.textBright,
+    fontSize: 14,
+    outline: "none",
+    resize: "vertical",
+  },
+  typeRow: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 },
+  typeChip: {
+    padding: "7px 12px",
+    borderRadius: 20,
+    border: "1.5px solid",
+    fontSize: 12.5,
+    background: COLORS.card,
+    fontFamily: "'IBM Plex Sans', sans-serif",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  typeChipDot: { width: 7, height: 7, borderRadius: "50%", flexShrink: 0 },
+  saveBtn: {
+    marginTop: 8,
+    padding: "15px",
+    borderRadius: 10,
+    background: COLORS.teal,
+    border: "none",
+    textAlign: "center",
+  },
+  saveBtnText: { color: COLORS.panel, fontSize: 15, letterSpacing: 1 },
+
+  statGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+    marginBottom: 22,
+  },
+  statTile: {
+    background: COLORS.card,
+    border: `1px solid ${COLORS.cardOutline}`,
+    borderRadius: 12,
+    padding: "14px 14px",
+  },
+  statValue: { fontSize: 20, color: COLORS.teal },
+  statLabel: { fontSize: 9.5, color: COLORS.textMuted, marginTop: 4, letterSpacing: 0.5 },
+
+  panelCard: {
+    background: COLORS.card,
+    border: `1px solid ${COLORS.cardOutline}`,
+    borderRadius: 12,
+    padding: "16px",
+    marginBottom: 8,
+  },
+  barRow: { display: "flex", justifyContent: "space-between", marginBottom: 5 },
+  barLabel: { fontSize: 12.5, color: COLORS.textPrimary },
+  barCount: { fontSize: 12, color: COLORS.textMuted },
+  barTrack: { height: 6, borderRadius: 3, background: COLORS.panel, overflow: "hidden" },
+  barFill: { height: "100%", borderRadius: 3 },
+
+  histogram: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", height: 110 },
+  histoCol: { display: "flex", flexDirection: "column", alignItems: "center", flex: 1 },
+  histoBarTrack: { display: "flex", alignItems: "flex-end", height: 76 },
+  histoBarFill: { width: 18, background: COLORS.teal, borderRadius: "3px 3px 0 0" },
+  histoLabel: { fontSize: 9.5, color: COLORS.textMuted, marginTop: 6 },
+  histoCount: { fontSize: 10, color: COLORS.textDim },
+
+  pieLegendRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 9 },
+  pieLegendLabel: { fontSize: 12.5, color: COLORS.textPrimary, flex: 1 },
+  pieLegendValue: { fontSize: 10.5, color: COLORS.textMuted },
+
+  nav: {
+    display: "flex",
+    borderTop: `1px solid ${COLORS.divider}`,
+    background: COLORS.panel,
+    padding: "8px 0 calc(8px + env(safe-area-inset-bottom))",
+  },
+  navBtn: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+    background: "transparent",
+    border: "none",
+    padding: "4px 0",
+  },
+  navIconWrap: {
+    width: 40,
+    height: 30,
+    borderRadius: 8,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navLabel: { fontSize: 9.5, letterSpacing: 1 },
+};
