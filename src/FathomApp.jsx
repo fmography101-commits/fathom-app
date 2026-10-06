@@ -7,7 +7,6 @@ import {
   Award,
   BarChart3,
   X,
-  User,
   Users,
   UploadCloud,
   LogOut,
@@ -58,17 +57,17 @@ const CURRENT_USER_SHORT = `${CURRENT_USER.rank} ${CURRENT_USER.surname}`;
 
 /* ---------------- squadron roster (dummy profiles, highest rank first) ---------------- */
 const SQUADRON = [
-  { id: "m1", name: "Lt Cdr J. Whitfield", diveCount: 540, diveTime: "410h 0m" },
-  { id: "m2", name: "Lt Hargreaves", diveCount: 410, diveTime: "320h 0m" },
-  { id: "m3", name: "Sub Lt R. Okafor", diveCount: 180, diveTime: "140h 0m" },
-  { id: "m4", name: "WO1 D. Pennington", diveCount: 620, diveTime: "480h 0m" },
-  { id: "m5", name: "CPO S. Bardsley", diveCount: 480, diveTime: "370h 0m" },
-  { id: "m6", name: "PO Reeves", diveCount: 310, diveTime: "240h 0m" },
-  { id: "m7", name: "PO T. Linnell", diveCount: 290, diveTime: "225h 0m" },
-  { id: "m8", name: "LD Marsh", diveCount: 165, diveTime: "128h 0m" },
-  { id: "m9", name: "LD K. Fenwick", diveCount: 150, diveTime: "115h 0m" },
-  { id: "m10", name: "AB Coyle", diveCount: 68, diveTime: "52h 0m" },
-  { id: "m11", name: "AB R. Doyle", diveCount: 54, diveTime: "41h 0m" },
+  { id: "m1", rank: "Lt Cdr", name: "Lt Cdr J. Whitfield", diveCount: 540, diveTime: "410h 0m" },
+  { id: "m2", rank: "Lt", name: "Lt Hargreaves", diveCount: 410, diveTime: "320h 0m" },
+  { id: "m3", rank: "Sub Lt", name: "Sub Lt R. Okafor", diveCount: 180, diveTime: "140h 0m" },
+  { id: "m4", rank: "WO1", name: "WO1 D. Pennington", diveCount: 620, diveTime: "480h 0m" },
+  { id: "m5", rank: "CPO", name: "CPO S. Bardsley", diveCount: 480, diveTime: "370h 0m" },
+  { id: "m6", rank: "PO", name: "PO Reeves", diveCount: 310, diveTime: "240h 0m" },
+  { id: "m7", rank: "PO", name: "PO T. Linnell", diveCount: 290, diveTime: "225h 0m" },
+  { id: "m8", rank: "LH", name: "LH Marsh", diveCount: 165, diveTime: "128h 0m" },
+  { id: "m9", rank: "LH", name: "LH K. Fenwick", diveCount: 150, diveTime: "115h 0m" },
+  { id: "m10", rank: "AB", name: "AB Coyle", diveCount: 68, diveTime: "52h 0m" },
+  { id: "m11", rank: "AB", name: "AB R. Doyle", diveCount: 54, diveTime: "41h 0m" },
   { id: "m12", rank: CURRENT_USER.rank, surname: CURRENT_USER.surname, nickname: CURRENT_USER.nickname, isSelf: true },
 ];
 
@@ -102,7 +101,7 @@ const SEED_DIVES = [
     setNumber: "4",
     type: "training",
     supervisor: "PO Reeves",
-    team: "LD Marsh, AB Coyle",
+    team: "LH Marsh, AB Coyle",
     rig: "SABA",
     waterTemp: "14°C",
     visibility: "3m",
@@ -125,7 +124,7 @@ const SEED_DIVES = [
     setNumber: "2",
     type: "eod",
     supervisor: "Lt Hargreaves",
-    team: "LD Marsh",
+    team: "LH Marsh",
     rig: "SABA",
     waterTemp: "15°C",
     visibility: "2m",
@@ -194,7 +193,7 @@ const SEED_DIVES = [
     setNumber: "4",
     type: "training",
     supervisor: "PO Reeves",
-    team: "LD Marsh",
+    team: "LH Marsh",
     rig: "SABA",
     waterTemp: "13°C",
     visibility: "2.5m",
@@ -217,7 +216,7 @@ const SEED_DIVES = [
     setNumber: "5",
     type: "training",
     supervisor: "PO Reeves",
-    team: "AB Coyle, LD Marsh",
+    team: "AB Coyle, LH Marsh",
     rig: "SABA",
     waterTemp: "16°C",
     visibility: "1.5m",
@@ -240,7 +239,7 @@ const SEED_DIVES = [
     setNumber: "3",
     type: "eod",
     supervisor: "Lt Hargreaves",
-    team: "LD Marsh",
+    team: "LH Marsh",
     rig: "SOBA",
     waterTemp: "17°C",
     visibility: "3m",
@@ -309,7 +308,7 @@ const SEED_DIVES = [
     setNumber: "3",
     type: "search",
     supervisor: "PO Reeves",
-    team: "LD Marsh, AB Coyle",
+    team: "LH Marsh, AB Coyle",
     rig: "RABA",
     waterTemp: "15°C",
     visibility: "2.5m",
@@ -499,6 +498,8 @@ export default function FathomApp() {
     Math.random() < 0.5 ? "upToDate" : "outdated"
   );
 
+  const [showNickname, setShowNickname] = useState(true);
+
   const handleAddDive = (dive) => {
     setDives((prev) => [{ ...dive, id: `d${Date.now()}` }, ...prev]);
     setAddingDive(false);
@@ -560,19 +561,43 @@ export default function FathomApp() {
             onSave={handleAddQual}
           />
         ) : view === "home" ? (
-          <HomeScreen dives={dives} quals={quals} upcoming={upcoming} onGoToTab={goToTab} />
+          <HomeScreen
+            dives={dives}
+            quals={quals}
+            upcoming={upcoming}
+            onGoToTab={goToTab}
+            showNickname={showNickname}
+          />
         ) : tab === "dives" ? (
-          <DivesTab dives={dives} onAddDive={() => setAddingDive(true)} onBackUpData={handleBackUpData} />
+          <DivesTab
+            dives={dives}
+            onAddDive={() => setAddingDive(true)}
+            onBackUpData={handleBackUpData}
+            showNickname={showNickname}
+            onToggleNickname={setShowNickname}
+          />
         ) : tab === "stats" ? (
-          <StatsTab dives={dives} onBackUpData={handleBackUpData} />
+          <StatsTab
+            dives={dives}
+            onBackUpData={handleBackUpData}
+            showNickname={showNickname}
+            onToggleNickname={setShowNickname}
+          />
         ) : tab === "squadron" ? (
-          <SquadronTab dives={dives} onBackUpData={handleBackUpData} />
+          <SquadronTab
+            dives={dives}
+            onBackUpData={handleBackUpData}
+            showNickname={showNickname}
+            onToggleNickname={setShowNickname}
+          />
         ) : (
           <QualificationsTab
             quals={quals}
             dives={dives}
             onAddQual={() => setAddingQual(true)}
             onBackUpData={handleBackUpData}
+            showNickname={showNickname}
+            onToggleNickname={setShowNickname}
           />
         )}
       </div>
@@ -596,14 +621,19 @@ function ProfileSummaryCard({ name, rank, surname, nickname, diveCount, diveTime
       }}
     >
       <div style={styles.profileIconWrap}>
-        <User size={20} color={COLORS.teal} strokeWidth={2} />
+        <span className="fathom-mono" style={styles.rankBadgeText}>{rank}</span>
       </div>
       <div style={{ flex: 1 }}>
         <div className="fathom-oswald" style={styles.homeProfileId}>
-          {nickname ? (
+          {surname ? (
             <>
-              {rank} {surname}{" "}
-              <span style={styles.nicknameText}>'{nickname}'</span>
+              {rank} {surname}
+              {nickname && (
+                <>
+                  {" "}
+                  <span style={styles.nicknameText}>'{nickname}'</span>
+                </>
+              )}
             </>
           ) : (
             name
@@ -618,7 +648,7 @@ function ProfileSummaryCard({ name, rank, surname, nickname, diveCount, diveTime
   );
 }
 
-function HomeScreen({ dives, quals, upcoming, onGoToTab }) {
+function HomeScreen({ dives, quals, upcoming, onGoToTab, showNickname }) {
   const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
 
   const outOfDateQuals = quals.filter((q) => {
@@ -632,7 +662,7 @@ function HomeScreen({ dives, quals, upcoming, onGoToTab }) {
       <ProfileSummaryCard
         rank={CURRENT_USER.rank}
         surname={CURRENT_USER.surname}
-        nickname={CURRENT_USER.nickname}
+        nickname={showNickname ? CURRENT_USER.nickname : null}
         diveCount={dives.length}
         diveTime={fmtHoursMins(totalMins)}
       />
@@ -707,7 +737,7 @@ function HomeScreen({ dives, quals, upcoming, onGoToTab }) {
 /* ============================================================
    MY SQUADRON TAB
    ============================================================ */
-function SquadronTab({ dives, onBackUpData }) {
+function SquadronTab({ dives, onBackUpData, showNickname, onToggleNickname }) {
   const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
 
   return (
@@ -717,6 +747,8 @@ function SquadronTab({ dives, onBackUpData }) {
         subtitle={`${SQUADRON.length} personnel`}
         dives={dives}
         onBackUpData={onBackUpData}
+        showNickname={showNickname}
+        onToggleNickname={onToggleNickname}
       />
       {SQUADRON.map((member) =>
         member.isSelf ? (
@@ -724,7 +756,7 @@ function SquadronTab({ dives, onBackUpData }) {
             key={member.id}
             rank={member.rank}
             surname={member.surname}
-            nickname={member.nickname}
+            nickname={showNickname ? member.nickname : null}
             diveCount={dives.length}
             diveTime={fmtHoursMins(totalMins)}
             isSelf
@@ -732,6 +764,7 @@ function SquadronTab({ dives, onBackUpData }) {
         ) : (
           <ProfileSummaryCard
             key={member.id}
+            rank={member.rank}
             name={member.name}
             diveCount={member.diveCount}
             diveTime={member.diveTime}
@@ -792,7 +825,7 @@ function BottomNav({ view, tab, onNavigate, syncStatus }) {
 /* ============================================================
    DIVES TAB
    ============================================================ */
-function DivesTab({ dives, onAddDive, onBackUpData }) {
+function DivesTab({ dives, onAddDive, onBackUpData, showNickname, onToggleNickname }) {
   const [expandedId, setExpandedId] = useState(null);
   const grouped = useMemo(() => groupByMonth(dives), [dives]);
 
@@ -803,6 +836,8 @@ function DivesTab({ dives, onAddDive, onBackUpData }) {
         subtitle={`${dives.length} logged`}
         dives={dives}
         onBackUpData={onBackUpData}
+        showNickname={showNickname}
+        onToggleNickname={onToggleNickname}
       />
 
       <button style={styles.addDiveTile} onClick={onAddDive}>
@@ -1070,7 +1105,7 @@ function Field({ label, value, onChange, type = "text", placeholder, half, texta
 /* ============================================================
    STATS TAB
    ============================================================ */
-function StatsTab({ dives, onBackUpData }) {
+function StatsTab({ dives, onBackUpData, showNickname, onToggleNickname }) {
   // Shared Diver ID login across SLATE/FATHOM still to be wired up — using the real name for now
 
   const stats = useMemo(() => {
@@ -1117,6 +1152,8 @@ function StatsTab({ dives, onBackUpData }) {
         subtitle="Dive record summary"
         dives={dives}
         onBackUpData={onBackUpData}
+        showNickname={showNickname}
+        onToggleNickname={onToggleNickname}
       />
 
       <div style={styles.statGrid}>
@@ -1250,7 +1287,7 @@ function StatTile({ label, value }) {
   );
 }
 
-function PageHeaderWithProfile({ title, subtitle, dives, onBackUpData }) {
+function PageHeaderWithProfile({ title, subtitle, dives, onBackUpData, showNickname, onToggleNickname }) {
   const [showProfile, setShowProfile] = useState(false);
   const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
 
@@ -1263,7 +1300,7 @@ function PageHeaderWithProfile({ title, subtitle, dives, onBackUpData }) {
         </div>
         <button style={styles.profileBtn} onClick={() => setShowProfile(true)}>
           <div style={styles.profileIconWrap}>
-            <User size={18} color={COLORS.teal} strokeWidth={2} />
+            <span className="fathom-mono" style={styles.rankBadgeText}>{CURRENT_USER.rank}</span>
           </div>
           <span className="fathom-mono" style={styles.profileIdLabel}>{CURRENT_USER_SHORT.toUpperCase()}</span>
         </button>
@@ -1278,13 +1315,25 @@ function PageHeaderWithProfile({ title, subtitle, dives, onBackUpData }) {
           totalTime={fmtHoursMins(totalMins)}
           onClose={() => setShowProfile(false)}
           onBackUpData={onBackUpData}
+          showNickname={showNickname}
+          onToggleNickname={onToggleNickname}
         />
       )}
     </>
   );
 }
 
-function ProfileModal({ rank, surname, nickname, totalDives, totalTime, onClose, onBackUpData }) {
+function ProfileModal({
+  rank,
+  surname,
+  nickname,
+  totalDives,
+  totalTime,
+  onClose,
+  onBackUpData,
+  showNickname,
+  onToggleNickname,
+}) {
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
@@ -1292,11 +1341,23 @@ function ProfileModal({ rank, surname, nickname, totalDives, totalTime, onClose,
           <X size={18} color={COLORS.textMuted} />
         </button>
         <div style={styles.modalIconWrap}>
-          <User size={32} color={COLORS.teal} strokeWidth={1.75} />
+          <span className="fathom-mono" style={styles.rankBadgeTextLarge}>{rank}</span>
         </div>
         <div className="fathom-oswald" style={styles.modalDiverId}>
-          {rank} {surname} <span style={styles.nicknameText}>'{nickname}'</span>
+          {rank} {surname}
+          {showNickname && <span style={styles.nicknameText}> '{nickname}'</span>}
         </div>
+
+        <label style={styles.nicknameCheckboxRow}>
+          <input
+            type="checkbox"
+            checked={showNickname}
+            onChange={(e) => onToggleNickname(e.target.checked)}
+            style={styles.nicknameCheckbox}
+          />
+          <span className="fathom-mono" style={styles.nicknameCheckboxLabel}>DISPLAY NICKNAME</span>
+        </label>
+
         <div style={styles.modalStatsRow}>
           <div style={styles.modalStat}>
             <div className="fathom-mono" style={styles.modalStatValue}>{totalDives}</div>
@@ -1333,7 +1394,7 @@ function ProfileModal({ rank, surname, nickname, totalDives, totalTime, onClose,
 /* ============================================================
    QUALIFICATIONS TAB
    ============================================================ */
-function QualificationsTab({ quals, dives, onAddQual, onBackUpData }) {
+function QualificationsTab({ quals, dives, onAddQual, onBackUpData, showNickname, onToggleNickname }) {
   const [expandedId, setExpandedId] = useState(null);
 
   const { expired, expiringSoon, upToDate } = useMemo(() => {
@@ -1353,6 +1414,8 @@ function QualificationsTab({ quals, dives, onAddQual, onBackUpData }) {
         subtitle={`${quals.length} on record`}
         dives={dives}
         onBackUpData={onBackUpData}
+        showNickname={showNickname}
+        onToggleNickname={onToggleNickname}
       />
 
       <button style={styles.addDiveTile} onClick={onAddQual}>
@@ -1634,6 +1697,24 @@ const styles = {
     justifyContent: "center",
   },
   profileIdLabel: { fontSize: 9.5, color: COLORS.textMuted, letterSpacing: 0.5 },
+  rankBadgeText: {
+    display: "block",
+    maxWidth: 32,
+    fontSize: 11.5,
+    fontWeight: 600,
+    color: COLORS.teal,
+    letterSpacing: 0.2,
+    textAlign: "center",
+    lineHeight: 1.1,
+  },
+  rankBadgeTextLarge: {
+    fontSize: 19,
+    fontWeight: 600,
+    color: COLORS.teal,
+    letterSpacing: 0.3,
+    textAlign: "center",
+    lineHeight: 1,
+  },
 
   homeProfileCard: {
     display: "flex",
@@ -1701,7 +1782,21 @@ const styles = {
     justifyContent: "center",
     marginBottom: 14,
   },
-  modalDiverId: { fontSize: 18, letterSpacing: 1, color: COLORS.textBright, marginBottom: 18 },
+  modalDiverId: { fontSize: 18, letterSpacing: 1, color: COLORS.textBright, marginBottom: 10 },
+  nicknameCheckboxRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 18,
+    cursor: "pointer",
+  },
+  nicknameCheckbox: {
+    width: 15,
+    height: 15,
+    accentColor: COLORS.teal,
+    cursor: "pointer",
+  },
+  nicknameCheckboxLabel: { fontSize: 10, color: COLORS.textMuted, letterSpacing: 0.5 },
   modalStatsRow: { display: "flex", gap: 24, width: "100%", justifyContent: "center" },
   modalStat: { textAlign: "center" },
   modalStatValue: { fontSize: 17, color: COLORS.teal },
