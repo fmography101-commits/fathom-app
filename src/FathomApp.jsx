@@ -19,6 +19,7 @@ import {
   Send,
   Paperclip,
   Watch,
+  Pencil,
 } from "lucide-react";
 
 /* ============================================================
@@ -75,6 +76,71 @@ const SQUADRON = [
   { id: "m11", rank: "AB", name: "AB R. Doyle", diveCount: 54, diveTime: "41h 0m" },
   { id: "m12", rank: CURRENT_USER.rank, surname: CURRENT_USER.surname, nickname: CURRENT_USER.nickname, isSelf: true },
 ];
+
+// Dummy medical + qualification records for everyone else in the squadron.
+// Seeded by member id so a person's records don't change between renders; expiry
+// dates are relative to today so every status (current / expiring / expired) shows up.
+function daysFromToday(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return isoDate(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function seededRandom(seedText) {
+  let h = 1779033703 ^ seedText.length;
+  for (let i = 0; i < seedText.length; i++) {
+    h = Math.imul(h ^ seedText.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const SQUAD_QUAL_POOL = [
+  "Ships Team Diver (STD)",
+  "Mine Clearance Diver Grade 2",
+  "Explosive Ordnance Disposal Level 1",
+  "Surface Supplied Diving Supervisor",
+  "First Aid at Work (Diving Ops)",
+];
+
+function makeMemberRecords(memberId) {
+  const rand = seededRandom(memberId);
+  const pickExpiry = () => {
+    const roll = rand();
+    if (roll < 0.55) return daysFromToday(90 + Math.floor(rand() * 500)); // current
+    if (roll < 0.78) return daysFromToday(5 + Math.floor(rand() * 50)); // expiring soon
+    return daysFromToday(-(5 + Math.floor(rand() * 120))); // expired
+  };
+
+  const medical = ["Diver Medical", "Dental", "X-Ray"].map((name, i) => ({
+    id: `${memberId}-med${i}`,
+    name,
+    expiryDate: pickExpiry(),
+  }));
+
+  const pool = [...SQUAD_QUAL_POOL];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const quals = pool.slice(0, 3 + Math.floor(rand() * 3)).map((name, i) => ({
+    id: `${memberId}-q${i}`,
+    name,
+    expiryDate: name === "Mine Clearance Diver Grade 2" ? "" : pickExpiry(), // MCD2 never lapses
+  }));
+
+  return { medical, quals };
+}
+
+const SQUADRON_RECORDS = Object.fromEntries(
+  SQUADRON.filter((m) => !m.isSelf).map((m) => [m.id, makeMemberRecords(m.id)])
+);
 
 const DIVE_TYPES = [
   { key: "training", label: "Training", color: COLORS.teal },
@@ -567,6 +633,8 @@ export default function FathomApp() {
   const [medical] = useState(SEED_MEDICAL);
   const [upcoming, setUpcoming] = useState(SEED_UPCOMING_DIVES);
   const [addingDive, setAddingDive] = useState(false);
+  const [prefillPlan, setPrefillPlan] = useState(null); // planned dive being logged via the pencil
+  const [submittedNotice, setSubmittedNotice] = useState(null); // { supervisor } after a dive log is submitted
   const [addingQual, setAddingQual] = useState(false);
 
   // Demo only: always starts "outdated" (red) each time the app loads, so Back Up Data
@@ -607,8 +675,41 @@ export default function FathomApp() {
   }, [updateScrollHint]);
 
   const handleAddDive = (dive) => {
-    setDives((prev) => [{ ...dive, id: `d${Date.now()}` }, ...prev]);
+    setDives((prev) => [{ ...dive, id: `d${Date.now()}`, status: "pending" }, ...prev]);
+    // A planned dive that has now been logged leaves the Upcoming list
+    if (prefillPlan) setUpcoming((prev) => prev.filter((u) => u.id !== prefillPlan.id));
+    setPrefillPlan(null);
     setAddingDive(false);
+    // Land on the Dives page, with the confirmation popup over it
+    setView("tab");
+    setTab("dives");
+    setSubmittedNotice({ supervisor: dive.supervisor });
+  };
+
+  // Save Draft: keep everything entered so far as an upcoming dive, then leave the form.
+  // If the form was opened from a planned dive, that dive is updated rather than duplicated.
+  const handleSaveDraft = (draft) => {
+    const now = new Date();
+    const today = isoDate(now.getFullYear(), now.getMonth(), now.getDate());
+    const saved = { ...draft, date: draft.date || today };
+    setUpcoming((prev) => {
+      const next = prefillPlan
+        ? prev.map((u) => (u.id === prefillPlan.id ? { ...u, ...saved } : u))
+        : [...prev, { ...saved, id: `u${Date.now()}` }];
+      return next.sort((a, b) => a.date.localeCompare(b.date));
+    });
+    setPrefillPlan(null);
+    setAddingDive(false);
+  };
+
+  const closeAddDive = () => {
+    setPrefillPlan(null);
+    setAddingDive(false);
+  };
+
+  const startLogPlannedDive = (planned) => {
+    setPrefillPlan(planned);
+    setAddingDive(true);
   };
 
   const handleAddQual = (qual) => {
@@ -666,8 +767,10 @@ export default function FathomApp() {
         {addingDive ? (
           <AddDiveForm
             existingDives={dives}
-            onCancel={() => setAddingDive(false)}
+            prefill={prefillPlan}
+            onCancel={closeAddDive}
             onSave={handleAddDive}
+            onSaveDraft={handleSaveDraft}
           />
         ) : addingQual ? (
           <AddQualificationForm
@@ -681,6 +784,7 @@ export default function FathomApp() {
             medical={medical}
             upcoming={upcoming}
             onGoToTab={goToTab}
+            onEditPlanned={startLogPlannedDive}
             showNickname={showNickname}
           />
         ) : tab === "dives" ? (
@@ -688,6 +792,7 @@ export default function FathomApp() {
             dives={dives}
             upcoming={upcoming}
             onAddDive={() => setAddingDive(true)}
+            onEditPlanned={startLogPlannedDive}
             onBackUpData={handleBackUpData}
             showNickname={showNickname}
             onToggleNickname={setShowNickname}
@@ -702,6 +807,8 @@ export default function FathomApp() {
         ) : tab === "squadron" ? (
           <SquadronTab
             dives={dives}
+            quals={quals}
+            medical={medical}
             onBackUpData={handleBackUpData}
             showNickname={showNickname}
             onToggleNickname={setShowNickname}
@@ -725,6 +832,13 @@ export default function FathomApp() {
       {!onASubScreen && (
         <BottomNav view={view} tab={tab} onNavigate={goToTab} syncStatus={syncStatus} />
       )}
+
+      {submittedNotice && (
+        <DiveSubmittedModal
+          supervisor={submittedNotice.supervisor}
+          onClose={() => setSubmittedNotice(null)}
+        />
+      )}
     </div>
   );
 }
@@ -732,14 +846,21 @@ export default function FathomApp() {
 /* ============================================================
    HOME SCREEN (landing page)
    ============================================================ */
-function ProfileSummaryCard({ name, rank, surname, nickname, diveCount, diveTime, isSelf }) {
-  return (
-    <div
-      style={{
-        ...styles.homeProfileCard,
-        ...(isSelf ? { borderColor: COLORS.teal } : {}),
-      }}
-    >
+function ProfileSummaryCard({
+  name,
+  rank,
+  surname,
+  nickname,
+  diveCount,
+  diveTime,
+  isSelf,
+  expandable = false,
+  expanded = false,
+  onToggle,
+  children,
+}) {
+  const content = (
+    <>
       <div style={styles.profileIconWrap}>
         <span className="fathom-mono" style={styles.rankBadgeText}>{rank}</span>
       </div>
@@ -764,11 +885,36 @@ function ProfileSummaryCard({ name, rank, surname, nickname, diveCount, diveTime
           {diveCount} DIVES · {diveTime} UNDERWATER
         </div>
       </div>
+    </>
+  );
+
+  const cardStyle = {
+    ...styles.homeProfileCard,
+    ...(isSelf ? { borderColor: COLORS.teal } : {}),
+  };
+
+  if (!expandable) return <div style={cardStyle}>{content}</div>;
+
+  return (
+    <div style={{ ...cardStyle, display: "block", padding: 0, overflow: "hidden" }}>
+      <button style={styles.profileDropdownHeader} onClick={onToggle}>
+        {content}
+        <ChevronDown
+          size={18}
+          color={COLORS.textMuted}
+          style={{
+            flexShrink: 0,
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.2s ease",
+          }}
+        />
+      </button>
+      {expanded && <div style={styles.profileDropdownBody}>{children}</div>}
     </div>
   );
 }
 
-function HomeScreen({ dives, quals, medical, upcoming, onGoToTab, showNickname }) {
+function HomeScreen({ dives, quals, medical, upcoming, onGoToTab, onEditPlanned, showNickname }) {
   const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
 
   const outOfDateQuals = quals.filter((q) => {
@@ -842,29 +988,7 @@ function HomeScreen({ dives, quals, medical, upcoming, onGoToTab, showNickname }
           </span>
         </div>
       ) : (
-        upcoming.map((u) => {
-          const info = typeInfo(u.type);
-          return (
-            <div key={u.id} style={styles.card}>
-              <div style={{ ...styles.cardHeader, cursor: "default" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ ...styles.typeDot, background: info.color }} />
-                  <div style={{ textAlign: "left" }}>
-                    <div className="fathom-oswald" style={styles.cardTitle}>{u.location}</div>
-                    <div className="fathom-mono" style={styles.cardSubtitle}>
-                      {dayLabel(u.date)} · {info.label}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div style={{ padding: "0 16px 14px" }}>
-                <span className="fathom-body" style={{ color: COLORS.textMuted, fontSize: 12.5 }}>
-                  {u.note}
-                </span>
-              </div>
-            </div>
-          );
-        })
+        upcoming.map((u) => <UpcomingDiveCard key={u.id} item={u} onEdit={onEditPlanned} />)
       )}
     </div>
   );
@@ -873,21 +997,72 @@ function HomeScreen({ dives, quals, medical, upcoming, onGoToTab, showNickname }
 /* ============================================================
    MY SQUADRON TAB
    ============================================================ */
-function SquadronTab({ dives, onBackUpData, showNickname, onToggleNickname }) {
+// One line of a person's record: status dot, name, status and expiry
+function RecordRow({ name, expiryDate }) {
+  const status = QUAL_STATUS[qualStatus({ expiryDate })];
+  return (
+    <div style={styles.recordRow}>
+      <div style={{ ...styles.typeDot, background: status.color }} />
+      <span className="fathom-body" style={styles.recordName}>{name}</span>
+      <div style={{ textAlign: "right" }}>
+        <div className="fathom-mono" style={{ ...styles.recordStatus, color: status.color }}>
+          {status.label.toUpperCase()}
+        </div>
+        {expiryDate && (
+          <div className="fathom-mono" style={styles.recordExpiry}>EXP {expiryDate}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MemberRecords({ medical, quals }) {
+  return (
+    <>
+      <div className="fathom-mono" style={styles.categoryLabel}>MEDICAL</div>
+      {medical.map((item) => (
+        <RecordRow key={item.id} name={item.name} expiryDate={item.expiryDate} />
+      ))}
+      <div className="fathom-mono" style={{ ...styles.categoryLabel, marginTop: 16 }}>QUALIFICATIONS</div>
+      {quals.map((item) => (
+        <RecordRow key={item.id} name={item.name} expiryDate={item.expiryDate} />
+      ))}
+    </>
+  );
+}
+
+function SquadronTab({ dives, quals, medical, onBackUpData, showNickname, onToggleNickname }) {
   const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
+  const [managementMode, setManagementMode] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
 
   return (
     <div style={styles.tabContent}>
       <PageHeaderWithProfile
         title="My Squadron"
-        subtitle={`${SQUADRON.length} personnel`}
+        subtitle={
+          managementMode ? `Management view · ${SQUADRON.length} personnel` : `${SQUADRON.length} personnel`
+        }
         dives={dives}
         onBackUpData={onBackUpData}
         showNickname={showNickname}
         onToggleNickname={onToggleNickname}
       />
-      {SQUADRON.map((member) =>
-        member.isSelf ? (
+      {SQUADRON.map((member) => {
+        // Management view: same cards, but each one drops down to show that person's records
+        const dropdown = managementMode
+          ? {
+              expandable: true,
+              expanded: expandedId === member.id,
+              onToggle: () => setExpandedId(expandedId === member.id ? null : member.id),
+              children: (
+                <MemberRecords
+                  {...(member.isSelf ? { medical, quals } : SQUADRON_RECORDS[member.id])}
+                />
+              ),
+            }
+          : {};
+        return member.isSelf ? (
           <ProfileSummaryCard
             key={member.id}
             rank={member.rank}
@@ -896,6 +1071,7 @@ function SquadronTab({ dives, onBackUpData, showNickname, onToggleNickname }) {
             diveCount={dives.length}
             diveTime={fmtHoursMins(totalMins)}
             isSelf
+            {...dropdown}
           />
         ) : (
           <ProfileSummaryCard
@@ -904,9 +1080,22 @@ function SquadronTab({ dives, onBackUpData, showNickname, onToggleNickname }) {
             name={member.name}
             diveCount={member.diveCount}
             diveTime={member.diveTime}
+            {...dropdown}
           />
-        )
-      )}
+        );
+      })}
+
+      <button
+        style={styles.debugBtn}
+        onClick={() => {
+          setManagementMode((on) => !on);
+          setExpandedId(null);
+        }}
+      >
+        <span className="fathom-mono" style={styles.debugBtnText}>
+          {managementMode ? "EXIT MANAGEMENT DEBUG" : "MANAGEMENT DEBUG"}
+        </span>
+      </button>
     </div>
   );
 }
@@ -1068,9 +1257,40 @@ function DiveCalendar({ dives, upcoming = [] }) {
   );
 }
 
-function DivesTab({ dives, upcoming, onAddDive, onBackUpData, showNickname, onToggleNickname }) {
+// A planned (not yet logged) dive. Hollow dot = planned, matching the calendar's key.
+function UpcomingDiveCard({ item, onEdit }) {
+  const info = typeInfo(item.type);
+  return (
+    <div style={styles.card}>
+      <div style={{ ...styles.cardHeader, cursor: "default" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ ...styles.typeDot, background: "transparent", border: `1.5px solid ${info.color}` }} />
+          <div style={{ textAlign: "left" }}>
+            <div className="fathom-oswald" style={styles.cardTitle}>{item.location || "Location TBC"}</div>
+            <div className="fathom-mono" style={styles.cardSubtitle}>
+              {dayLabel(item.date)} · {info.label}
+            </div>
+          </div>
+        </div>
+        <button
+          style={styles.iconBtn}
+          aria-label={`Edit planned dive at ${item.location}`}
+          onClick={() => onEdit && onEdit(item)}
+        >
+          <Pencil size={15} color={COLORS.teal} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DivesTab({ dives, upcoming = [], onAddDive, onEditPlanned, onBackUpData, showNickname, onToggleNickname }) {
   const [expandedId, setExpandedId] = useState(null);
   const grouped = useMemo(() => groupByMonth(dives), [dives]);
+  const upcomingSorted = useMemo(
+    () => [...upcoming].sort((a, b) => a.date.localeCompare(b.date)),
+    [upcoming]
+  );
 
   return (
     <div style={styles.tabContent}>
@@ -1089,6 +1309,19 @@ function DivesTab({ dives, upcoming, onAddDive, onBackUpData, showNickname, onTo
         <Plus size={20} color={COLORS.teal} />
         <span className="fathom-oswald" style={styles.addDiveText}>ADD DIVE</span>
       </button>
+
+      <div style={{ marginTop: 22 }}>
+        <div className="fathom-mono" style={styles.categoryLabel}>UPCOMING DIVES</div>
+        {upcomingSorted.length === 0 ? (
+          <div style={styles.panelCard}>
+            <span className="fathom-body" style={{ color: COLORS.textMuted, fontSize: 13 }}>
+              No upcoming dives planned.
+            </span>
+          </div>
+        ) : (
+          upcomingSorted.map((u) => <UpcomingDiveCard key={u.id} item={u} onEdit={onEditPlanned} />)
+        )}
+      </div>
 
       {grouped.map(([month, monthDives]) => (
         <div key={month} style={{ marginTop: 22 }}>
@@ -1164,6 +1397,15 @@ function DiveCard({ dive, expanded, onToggle }) {
           {dive.notes && <Detail label="Notes" value={dive.notes} full />}
         </div>
       )}
+
+      {dive.status === "pending" && (
+        <div style={styles.pendingRow}>
+          <Clock size={13} color={COLORS.amber} style={{ flexShrink: 0 }} />
+          <span className="fathom-mono" style={styles.pendingText}>
+            Pending Approval from Dive Supervisor...
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1183,6 +1425,56 @@ function Detail({ label, value, full, dotColor }) {
 /* ============================================================
    ADD DIVE FORM
    ============================================================ */
+/* ---------------- debug autofill (selecting "Other" as the dive purpose) ---------------- */
+// Fills every field of the New Dive Log with plausible random values, for testing.
+function generateDebugDive() {
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  const between = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+  const pad = (n) => String(n).padStart(2, "0");
+
+  const startMins = between(8, 14) * 60 + pick([0, 15, 30, 45]);
+  const bottomTime = between(30, 65);
+  const endMins = startMins + bottomTime;
+  const maxDepth = between(8, 30);
+  const now = new Date();
+
+  return {
+    date: isoDate(now.getFullYear(), now.getMonth(), now.getDate()),
+    location: pick([
+      "HMNB Devonport, Basin 3",
+      "Portland Harbour",
+      "Horsea Island",
+      "Faslane, Gare Loch",
+      "Loch Long",
+    ]),
+    setNumber: String(between(1, 6)),
+    supervisor: pick(["PO Reeves", "Lt Hargreaves", "CPO S. Bardsley", "WO1 D. Pennington"]),
+    team: pick(["LH Marsh, AB Coyle", "AB Coyle", "LH K. Fenwick, AB R. Doyle"]),
+    rig: pick(RIG_TYPES).key,
+    waterTemp: `${between(10, 18)}°C`,
+    visibility: `${pick(["1.5", "2", "2.5", "3", "4"])}m`,
+    current: pick(["None", "Slack", "Mild", "Moderate"]),
+    seaState: String(between(0, 3)),
+    timeIn: `${pad(Math.floor(startMins / 60))}:${pad(startMins % 60)}`,
+    timeOut: `${pad(Math.floor(endMins / 60))}:${pad(endMins % 60)}`,
+    bottomTime: String(bottomTime),
+    maxDepth: String(maxDepth),
+    decoStops: maxDepth >= 24 ? "3m / 3min" : "None required",
+    gas: pick(["Air", "Nitrox 32"]),
+    task: pick([
+      "Jackstay search - area clearance",
+      "Circular search refresher",
+      "Hull inspection - routine husbandry dive",
+      "Suspected ordnance response - datum investigation",
+    ]),
+    notes: pick([
+      "Nil incidents.",
+      "Good comms throughout, no issues.",
+      "Reduced visibility, search completed as planned.",
+    ]),
+  };
+}
+
 /* ---------------- spoofed dive computer import (demo only) ---------------- */
 // Only what a dive computer would actually record. Site, team, rig, task etc. stay manual.
 function diveComputerData(source) {
@@ -1213,7 +1505,7 @@ function diveComputerData(source) {
   };
 }
 
-function AddDiveForm({ existingDives, onCancel, onSave }) {
+function AddDiveForm({ existingDives, prefill = null, onCancel, onSave, onSaveDraft }) {
   const nextDiveNumber = useMemo(() => {
     const highest = existingDives.reduce(
       (max, d) => Math.max(max, parseInt(d.diveNumber, 10) || 0),
@@ -1222,27 +1514,66 @@ function AddDiveForm({ existingDives, onCancel, onSave }) {
     return String(highest + 1);
   }, [existingDives]);
 
-  const [form, setForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    location: "",
-    setNumber: "",
-    type: "training",
-    supervisor: "",
-    team: "",
-    rig: "SABA",
-    waterTemp: "",
-    visibility: "",
-    current: "",
-    seaState: "",
-    timeIn: "",
-    timeOut: "",
-    bottomTime: "",
-    maxDepth: "",
-    decoStops: "",
-    gas: "Air",
-    task: "",
-    notes: "",
+  // Starts blank, or from everything a planned dive / saved draft already holds
+  const [form, setForm] = useState(() => {
+    const blank = {
+      date: new Date().toISOString().slice(0, 10),
+      location: "",
+      setNumber: "",
+      type: "training",
+      supervisor: "",
+      team: "",
+      rig: "SABA",
+      waterTemp: "",
+      visibility: "",
+      current: "",
+      seaState: "",
+      timeIn: "",
+      timeOut: "",
+      bottomTime: "",
+      maxDepth: "",
+      decoStops: "",
+      gas: "Air",
+      task: "",
+      notes: "",
+    };
+    if (!prefill) return blank;
+    const merged = { ...blank };
+    for (const key of Object.keys(blank)) {
+      if (prefill[key] !== undefined && prefill[key] !== null) merged[key] = String(prefill[key]);
+    }
+    return merged;
   });
+
+  // Submit is always tappable; if anything is empty we jump to the top and show a warning
+  const formTopRef = useRef(null);
+  const [showWarning, setShowWarning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const allFilled = Object.values(form).every((v) => String(v).trim() !== "");
+
+  const handleSubmit = () => {
+    if (!allFilled) {
+      setShowWarning(true);
+      const scroller = formTopRef.current && formTopRef.current.closest(".fathom-scroll");
+      if (scroller) scroller.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    setSubmitting(true);
+  };
+
+  // Brief "submitting" popup, then the form closes and the root shows the confirmation
+  useEffect(() => {
+    if (!submitting) return undefined;
+    const timer = setTimeout(() => {
+      onSave({
+        ...form,
+        diveNumber: nextDiveNumber,
+        bottomTime: Number(form.bottomTime) || 0,
+        maxDepth: Number(form.maxDepth) || 0,
+      });
+    }, 1800);
+    return () => clearTimeout(timer);
+  }, [submitting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Dive computer import (spoofed): menu -> loading screen -> back here with data filled in
   const [importStep, setImportStep] = useState(null); // null | "menu" | "loading"
@@ -1273,8 +1604,6 @@ function AddDiveForm({ existingDives, onCancel, onSave }) {
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  const canSave = form.location && form.date && form.maxDepth;
-
   if (importStep === "loading") {
     return (
       <div style={styles.importLoading}>
@@ -1295,7 +1624,7 @@ function AddDiveForm({ existingDives, onCancel, onSave }) {
   }
 
   return (
-    <div style={styles.tabContent}>
+    <div ref={formTopRef} style={styles.tabContent}>
       <div style={{ ...styles.formHeader, display: "grid", gridTemplateColumns: "1fr auto 1fr" }}>
         <button onClick={onCancel} style={{ ...styles.iconBtn, justifySelf: "start" }}>
           <X size={20} color={COLORS.textMuted} />
@@ -1306,6 +1635,42 @@ function AddDiveForm({ existingDives, onCancel, onSave }) {
           <span className="fathom-mono" style={styles.importBtnText}>IMPORT</span>
         </button>
       </div>
+
+      {submitting && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.importMenuCard}>
+            <div style={{ ...styles.importSpinnerWrap, margin: "0 auto 20px" }}>
+              <div style={styles.importSpinner} />
+              <Send size={22} color={COLORS.teal} />
+            </div>
+            <div className="fathom-oswald" style={styles.importMenuTitle}>SUBMITTING DIVE LOG...</div>
+            <div className="fathom-mono" style={{ ...styles.importMenuSubtitle, marginBottom: 4 }}>
+              Sending to {form.supervisor}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWarning && !allFilled && (
+        <div style={styles.formWarning} role="alert">
+          <AlertCircle size={16} color={COLORS.red} style={{ flexShrink: 0 }} />
+          <span className="fathom-body" style={styles.formWarningText}>
+            Please fill in all fields to log a dive
+          </span>
+        </div>
+      )}
+
+      {prefill && (
+        <div style={styles.importBanner}>
+          <Pencil size={16} color={COLORS.teal} style={{ flexShrink: 0 }} />
+          <div>
+            <div className="fathom-mono" style={styles.importBannerTitle}>FROM PLANNED DIVE</div>
+            <div className="fathom-body" style={styles.importBannerText}>
+              Carried over from your plan. Submitting logs this dive and removes it from Upcoming; Save Draft keeps it there.
+            </div>
+          </div>
+        </div>
+      )}
 
       {importedFrom && (
         <div style={styles.importBanner}>
@@ -1348,7 +1713,14 @@ function AddDiveForm({ existingDives, onCancel, onSave }) {
         {DIVE_TYPES.map((t) => (
           <button
             key={t.key}
-            onClick={() => setForm((f) => ({ ...f, type: t.key }))}
+            onClick={() => {
+              if (t.key === "other") {
+                const generated = generateDebugDive();
+                setForm((f) => ({ ...f, ...generated, type: "other" }));
+              } else {
+                setForm((f) => ({ ...f, type: t.key }));
+              }
+            }}
             style={{
               ...styles.typeChip,
               borderColor: form.type === t.key ? t.color : COLORS.divider,
@@ -1405,23 +1777,12 @@ function AddDiveForm({ existingDives, onCancel, onSave }) {
       <Field label="Task Performed" value={form.task} onChange={set("task")} textarea />
       <Field label="Notes / Incidents" value={form.notes} onChange={set("notes")} textarea />
 
-      <button
-        disabled={!canSave}
-        onClick={() =>
-          onSave({
-            ...form,
-            diveNumber: nextDiveNumber,
-            bottomTime: Number(form.bottomTime) || 0,
-            maxDepth: Number(form.maxDepth) || 0,
-          })
-        }
-        style={{
-          ...styles.saveBtn,
-          opacity: canSave ? 1 : 0.4,
-          cursor: canSave ? "pointer" : "not-allowed",
-        }}
-      >
-        <span className="fathom-oswald" style={styles.saveBtnText}>SAVE DIVE LOG</span>
+      <button onClick={handleSubmit} style={styles.saveBtn}>
+        <span className="fathom-oswald" style={styles.saveBtnText}>SUBMIT DIVE LOG</span>
+      </button>
+
+      <button onClick={() => onSaveDraft({ ...form })} style={styles.draftBtn}>
+        <span className="fathom-oswald" style={styles.draftBtnText}>SAVE DRAFT</span>
       </button>
     </div>
   );
@@ -1979,6 +2340,25 @@ function SubmitUpdateModal({ kind, record, onClose }) {
   );
 }
 
+function DiveSubmittedModal({ supervisor, onClose }) {
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={styles.importMenuCard}>
+        <div style={{ ...styles.submittedIcon, margin: "0 auto 16px" }}>
+          <Check size={26} color={COLORS.green} strokeWidth={2.5} />
+        </div>
+        <div className="fathom-body" style={styles.submittedMessage}>
+          Your Dive Log has been submitted to{" "}
+          <span style={styles.submittedMessageName}>{supervisor}</span> for sign off.
+        </div>
+        <button style={{ ...styles.saveBtn, width: "100%", marginTop: 0 }} onClick={onClose}>
+          <span className="fathom-oswald" style={styles.saveBtnText}>OK</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ImageViewer({ src, title, onClose }) {
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
@@ -2361,6 +2741,35 @@ const styles = {
     padding: "14px 16px",
     marginBottom: 22,
   },
+  profileDropdownHeader: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "14px 16px",
+    background: "transparent",
+    border: "none",
+    textAlign: "left",
+    color: "inherit",
+  },
+  profileDropdownBody: {
+    padding: "14px 16px 8px",
+    borderTop: `1px solid ${COLORS.divider}`,
+  },
+  recordRow: { display: "flex", alignItems: "center", gap: 10, padding: "8px 0" },
+  recordName: { flex: 1, fontSize: 13, color: COLORS.textPrimary },
+  recordStatus: { fontSize: 10, letterSpacing: 0.6 },
+  recordExpiry: { fontSize: 9, letterSpacing: 0.4, color: COLORS.textDim, marginTop: 2 },
+  debugBtn: {
+    width: "100%",
+    padding: "12px",
+    marginTop: 4,
+    borderRadius: 10,
+    background: "transparent",
+    border: `1px dashed ${COLORS.cardOutline}`,
+    textAlign: "center",
+  },
+  debugBtnText: { fontSize: 11.5, letterSpacing: 1, color: COLORS.textMuted },
   homeProfileId: { fontSize: 16, letterSpacing: 1, color: COLORS.textBright },
   homeProfileStats: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 3, letterSpacing: 0.3 },
   youTag: { fontSize: 10, color: COLORS.teal, letterSpacing: 0.5 },
@@ -2655,6 +3064,16 @@ const styles = {
     justifyContent: "center",
     marginBottom: 14,
   },
+  pendingRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    padding: "10px 16px 12px",
+    borderTop: `1px solid ${COLORS.divider}`,
+  },
+  pendingText: { fontSize: 10.5, letterSpacing: 0.4, color: COLORS.amber },
+  submittedMessage: { fontSize: 15, color: COLORS.textPrimary, lineHeight: 1.55, marginBottom: 22 },
+  submittedMessageName: { color: COLORS.teal, fontWeight: 600 },
   submittedTitle: { fontSize: 17, letterSpacing: 1, color: COLORS.textBright, marginBottom: 8 },
   submittedText: { fontSize: 13, color: COLORS.textMuted, lineHeight: 1.5, marginBottom: 20 },
   submittedCloseBtn: {
@@ -2831,6 +3250,27 @@ const styles = {
     border: "none",
     textAlign: "center",
   },
+  draftBtn: {
+    width: "100%",
+    marginTop: 12,
+    padding: "8px 13px",
+    borderRadius: 10,
+    background: "transparent",
+    border: `1px solid ${COLORS.teal}`,
+    textAlign: "center",
+  },
+  draftBtnText: { fontSize: 14, letterSpacing: 1, color: COLORS.teal },
+  formWarning: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "11px 12px",
+    marginBottom: 18,
+    background: COLORS.redDark,
+    border: `1px solid ${COLORS.red}`,
+    borderRadius: 10,
+  },
+  formWarningText: { fontSize: 13, color: COLORS.textBright, lineHeight: 1.4 },
   saveBtnText: { color: COLORS.panel, fontSize: 15, letterSpacing: 1 },
 
   statGrid: {
