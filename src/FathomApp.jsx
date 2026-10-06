@@ -12,7 +12,6 @@ import {
   Users,
   UploadCloud,
   LogOut,
-  Cloud,
   Check,
   RefreshCw,
   AlertCircle,
@@ -642,6 +641,7 @@ export default function FathomApp() {
   const [syncStatus, setSyncStatus] = useState("outdated");
 
   const [showNickname, setShowNickname] = useState(true);
+  const [showSyncInfo, setShowSyncInfo] = useState(false);
 
   const scrollRef = useRef(null);
   const contentRef = useRef(null);
@@ -753,9 +753,13 @@ export default function FathomApp() {
     setAddingQual(false);
   };
 
+  // Amber "syncing" for 5 seconds, then green. Used by the Back Up Data button and
+  // automatically after a dive log is submitted (new data -> the app syncs to the cloud).
+  const syncTimerRef = useRef(null);
   const handleBackUpData = () => {
     setSyncStatus("syncing");
-    setTimeout(() => setSyncStatus("upToDate"), 5000);
+    clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => setSyncStatus("upToDate"), 5000);
   };
 
   const goToTab = (key) => {
@@ -781,15 +785,25 @@ export default function FathomApp() {
       `}</style>
 
       {!onASubScreen && (
-        <button style={styles.masthead} onClick={() => setView("home")}>
-          <BubblesIcon size={22} color={COLORS.teal} />
-          <div>
-            <div className="fathom-oswald" style={styles.mastheadTitle}>FATHOM</div>
-            <div className="fathom-mono" style={styles.mastheadSubtitle}>
-              FLEET ASSET TRACKING &amp; HISTORICAL OPERATIONS MANIFEST
+        <div style={styles.masthead}>
+          <button style={styles.mastheadHome} onClick={() => setView("home")}>
+            <BubblesIcon size={22} color={COLORS.teal} />
+            <div>
+              <div className="fathom-oswald" style={styles.mastheadTitle}>FATHOM</div>
+              <div className="fathom-mono" style={styles.mastheadSubtitle}>
+                FLEET ASSET TRACKING &amp; HISTORICAL OPERATIONS MANIFEST
+              </div>
             </div>
-          </div>
-        </button>
+          </button>
+          <button
+            style={styles.mastheadSync}
+            onClick={() => setShowSyncInfo(true)}
+            title={`Cloud backup: ${SYNC_STATUS_CONFIG[syncStatus].label}`}
+            aria-label={`Cloud backup: ${SYNC_STATUS_CONFIG[syncStatus].label}. Tap for details`}
+          >
+            <SyncBadge status={syncStatus} size={30} />
+          </button>
+        </div>
       )}
 
       <div style={styles.screenWrap}>
@@ -866,13 +880,24 @@ export default function FathomApp() {
       </div>
 
       {!onASubScreen && (
-        <BottomNav view={view} tab={tab} onNavigate={goToTab} syncStatus={syncStatus} />
+        <BottomNav view={view} tab={tab} onNavigate={goToTab} />
+      )}
+
+      {showSyncInfo && (
+        <SyncStatusModal
+          status={syncStatus}
+          onBackUp={handleBackUpData}
+          onClose={() => setShowSyncInfo(false)}
+        />
       )}
 
       {submittedNotice && (
         <DiveSubmittedModal
           supervisor={submittedNotice.supervisor}
-          onClose={() => setSubmittedNotice(null)}
+          onClose={() => {
+            setSubmittedNotice(null);
+            handleBackUpData(); // new data has been added, so the app syncs it to the cloud
+          }}
         />
       )}
     </div>
@@ -1139,7 +1164,7 @@ function SquadronTab({ dives, quals, medical, onBackUpData, showNickname, onTogg
 /* ============================================================
    BOTTOM NAV
    ============================================================ */
-function BottomNav({ view, tab, onNavigate, syncStatus }) {
+function BottomNav({ view, tab, onNavigate }) {
   const items = [
     { key: "quals", label: "Records", icon: Award },
     { key: "dives", label: "Dives", icon: Waves },
@@ -1169,11 +1194,6 @@ function BottomNav({ view, tab, onNavigate, syncStatus }) {
               >
                 <Icon size={20} strokeWidth={2} color={active ? COLORS.teal : COLORS.textMuted} />
               </div>
-              {key === "dives" && (
-                <div style={styles.syncBadgeWrap}>
-                  <SyncBadge status={syncStatus} />
-                </div>
-              )}
             </div>
             <span className="fathom-mono" style={styles.navLabel}>{label.toUpperCase()}</span>
           </button>
@@ -2640,27 +2660,113 @@ function BubblesIcon({ size = 22, color = COLORS.teal }) {
 }
 
 const SYNC_STATUS_CONFIG = {
-  upToDate: { color: COLORS.green, Icon: Check },
-  syncing: { color: COLORS.amber, Icon: RefreshCw },
-  outdated: { color: COLORS.red, Icon: AlertCircle },
+  upToDate: {
+    color: COLORS.green,
+    Icon: Check,
+    label: "up to date",
+    title: "UP TO DATE",
+    description: "All of your data has been backed up to the cloud.",
+  },
+  syncing: {
+    color: COLORS.amber,
+    Icon: RefreshCw,
+    label: "syncing",
+    title: "SYNCING",
+    description: "Your latest data is being backed up to the cloud. This will only take a moment.",
+  },
+  outdated: {
+    color: COLORS.red,
+    Icon: AlertCircle,
+    label: "out of date",
+    title: "OUT OF DATE",
+    description:
+      "Some of your data hasn't been backed up to the cloud yet. Tap Back Up Data to upload it.",
+  },
 };
 
+// `size` is the badge's height; the cloud is 1.5x as wide as it is tall.
 function SyncBadge({ status, size = 15 }) {
   const { color, Icon } = SYNC_STATUS_CONFIG[status];
   return (
-    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
-      <Cloud size={size} color={color} fill={color} strokeWidth={0} />
-      <Icon
-        size={size * 0.52}
-        color={COLORS.bg}
-        strokeWidth={3.2}
+    <div style={{ position: "relative", width: size * 1.5, height: size, flexShrink: 0 }}>
+      <svg
+        width={size * 1.5}
+        height={size}
+        viewBox="0 0 48 32"
+        style={{ display: "block" }}
+        aria-hidden="true"
+      >
+        <g fill={color}>
+          <circle cx="13" cy="21" r="7.5" />
+          <circle cx="22" cy="14" r="10" />
+          <circle cx="33.5" cy="17.5" r="9" />
+          <rect x="5.5" y="19" width="37" height="10" rx="5" />
+        </g>
+      </svg>
+      <span
         style={{
           position: "absolute",
-          top: "58%",
+          top: "61%",
           left: "50%",
           transform: "translate(-50%, -50%)",
+          lineHeight: 0,
         }}
-      />
+      >
+        <Icon
+          size={size * 0.42}
+          color={COLORS.bg}
+          strokeWidth={3.2}
+          style={status === "syncing" ? { animation: "fathom-spin 1.2s linear infinite" } : undefined}
+        />
+      </span>
+    </div>
+  );
+}
+
+// Opens from the cloud in the header: current state, what it means, and a Back Up Data button
+// that is greyed out when there is nothing to back up (or a backup is already running).
+function SyncStatusModal({ status, onBackUp, onClose }) {
+  const { color, title, description } = SYNC_STATUS_CONFIG[status];
+  const canBackUp = status === "outdated";
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.importMenuCard} onClick={(e) => e.stopPropagation()}>
+        <button style={styles.modalClose} onClick={onClose}>
+          <X size={18} color={COLORS.textMuted} />
+        </button>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+          <SyncBadge status={status} size={72} />
+        </div>
+        <div className="fathom-oswald" style={{ ...styles.syncModalTitle, color }}>{title}</div>
+        <div className="fathom-body" style={styles.syncModalText}>{description}</div>
+        <button
+          disabled={!canBackUp}
+          onClick={() => {
+            onBackUp();
+            onClose();
+          }}
+          style={
+            canBackUp
+              ? { ...styles.backupBtn, marginBottom: 0 }
+              : {
+                  ...styles.backupBtn,
+                  marginBottom: 0,
+                  background: "transparent",
+                  border: `1px solid ${COLORS.divider}`,
+                  cursor: "not-allowed",
+                }
+          }
+        >
+          <UploadCloud size={16} color={canBackUp ? COLORS.teal : COLORS.greyNoData} strokeWidth={2} />
+          <span
+            className="fathom-mono"
+            style={{ ...styles.backupBtnText, color: canBackUp ? COLORS.teal : COLORS.greyNoData }}
+          >
+            BACK UP DATA
+          </span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -2708,15 +2814,33 @@ const styles = {
   masthead: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "space-between",
+    gap: 12,
     padding: "18px 18px 14px",
     flexShrink: 0,
+    borderBottom: `1px solid ${COLORS.divider}`,
+  },
+  mastheadHome: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: 0,
     background: "transparent",
     border: "none",
-    borderBottom: `1px solid ${COLORS.divider}`,
-    width: "100%",
     textAlign: "left",
   },
+  mastheadSync: {
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    padding: 0,
+    background: "transparent",
+    border: "none",
+  },
+  syncModalTitle: { fontSize: 18, letterSpacing: 1.5, marginBottom: 8 },
+  syncModalText: { fontSize: 13, color: COLORS.textMuted, lineHeight: 1.5, marginBottom: 20 },
   mastheadTitle: { fontSize: 18, fontWeight: 600, letterSpacing: 1.5, color: COLORS.textBright, lineHeight: 1.1 },
   mastheadSubtitle: { fontSize: 8.5, color: COLORS.textMuted, letterSpacing: 0.6, marginTop: 3, lineHeight: 1.3 },
   pageTitle: { fontSize: 26, fontWeight: 600, letterSpacing: 1, color: COLORS.textBright },
@@ -3373,13 +3497,4 @@ const styles = {
     justifyContent: "center",
   },
   navLabel: { fontSize: 9.5, letterSpacing: 1 },
-  syncBadgeWrap: {
-    position: "absolute",
-    bottom: -2,
-    right: -4,
-    background: COLORS.panel,
-    borderRadius: "50%",
-    padding: 1,
-    lineHeight: 0,
-  },
 };
