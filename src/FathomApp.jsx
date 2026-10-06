@@ -8,8 +8,13 @@ import {
   BarChart3,
   X,
   User,
+  Users,
   UploadCloud,
   LogOut,
+  Cloud,
+  Check,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 
 /* ============================================================
@@ -43,6 +48,29 @@ const COLORS = {
   cardOutline: "#44535C",
   blue: "#5AA9E6",
 };
+
+const CURRENT_USER = {
+  rank: "AB",
+  surname: "MacRostie",
+  nickname: "Frostie",
+};
+const CURRENT_USER_SHORT = `${CURRENT_USER.rank} ${CURRENT_USER.surname}`;
+
+/* ---------------- squadron roster (dummy profiles, highest rank first) ---------------- */
+const SQUADRON = [
+  { id: "m1", name: "Lt Cdr J. Whitfield", diveCount: 540, diveTime: "410h 0m" },
+  { id: "m2", name: "Lt Hargreaves", diveCount: 410, diveTime: "320h 0m" },
+  { id: "m3", name: "Sub Lt R. Okafor", diveCount: 180, diveTime: "140h 0m" },
+  { id: "m4", name: "WO1 D. Pennington", diveCount: 620, diveTime: "480h 0m" },
+  { id: "m5", name: "CPO S. Bardsley", diveCount: 480, diveTime: "370h 0m" },
+  { id: "m6", name: "PO Reeves", diveCount: 310, diveTime: "240h 0m" },
+  { id: "m7", name: "PO T. Linnell", diveCount: 290, diveTime: "225h 0m" },
+  { id: "m8", name: "LD Marsh", diveCount: 165, diveTime: "128h 0m" },
+  { id: "m9", name: "LD K. Fenwick", diveCount: 150, diveTime: "115h 0m" },
+  { id: "m10", name: "AB Coyle", diveCount: 68, diveTime: "52h 0m" },
+  { id: "m11", name: "AB R. Doyle", diveCount: 54, diveTime: "41h 0m" },
+  { id: "m12", rank: CURRENT_USER.rank, surname: CURRENT_USER.surname, nickname: CURRENT_USER.nickname, isSelf: true },
+];
 
 const DIVE_TYPES = [
   { key: "training", label: "Training", color: COLORS.teal },
@@ -465,6 +493,12 @@ export default function FathomApp() {
   const [addingDive, setAddingDive] = useState(false);
   const [addingQual, setAddingQual] = useState(false);
 
+  // Demo only: randomly starts "up to date" or "outdated" each time the app loads.
+  // Real backend sync status would replace this.
+  const [syncStatus, setSyncStatus] = useState(() =>
+    Math.random() < 0.5 ? "upToDate" : "outdated"
+  );
+
   const handleAddDive = (dive) => {
     setDives((prev) => [{ ...dive, id: `d${Date.now()}` }, ...prev]);
     setAddingDive(false);
@@ -473,6 +507,11 @@ export default function FathomApp() {
   const handleAddQual = (qual) => {
     setQuals((prev) => [{ ...qual, id: `q${Date.now()}` }, ...prev]);
     setAddingQual(false);
+  };
+
+  const handleBackUpData = () => {
+    setSyncStatus("syncing");
+    setTimeout(() => setSyncStatus("upToDate"), 5000);
   };
 
   const goToTab = (key) => {
@@ -523,16 +562,23 @@ export default function FathomApp() {
         ) : view === "home" ? (
           <HomeScreen dives={dives} quals={quals} upcoming={upcoming} onGoToTab={goToTab} />
         ) : tab === "dives" ? (
-          <DivesTab dives={dives} onAddDive={() => setAddingDive(true)} />
+          <DivesTab dives={dives} onAddDive={() => setAddingDive(true)} onBackUpData={handleBackUpData} />
         ) : tab === "stats" ? (
-          <StatsTab dives={dives} />
+          <StatsTab dives={dives} onBackUpData={handleBackUpData} />
+        ) : tab === "squadron" ? (
+          <SquadronTab dives={dives} onBackUpData={handleBackUpData} />
         ) : (
-          <QualificationsTab quals={quals} onAddQual={() => setAddingQual(true)} />
+          <QualificationsTab
+            quals={quals}
+            dives={dives}
+            onAddQual={() => setAddingQual(true)}
+            onBackUpData={handleBackUpData}
+          />
         )}
       </div>
 
       {!onASubScreen && (
-        <BottomNav view={view} tab={tab} onNavigate={goToTab} />
+        <BottomNav view={view} tab={tab} onNavigate={goToTab} syncStatus={syncStatus} />
       )}
     </div>
   );
@@ -541,9 +587,38 @@ export default function FathomApp() {
 /* ============================================================
    HOME SCREEN (landing page)
    ============================================================ */
-function HomeScreen({ dives, quals, upcoming, onGoToTab }) {
-  const diverId = "FROSTIE";
+function ProfileSummaryCard({ name, rank, surname, nickname, diveCount, diveTime, isSelf }) {
+  return (
+    <div
+      style={{
+        ...styles.homeProfileCard,
+        ...(isSelf ? { borderColor: COLORS.teal } : {}),
+      }}
+    >
+      <div style={styles.profileIconWrap}>
+        <User size={20} color={COLORS.teal} strokeWidth={2} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <div className="fathom-oswald" style={styles.homeProfileId}>
+          {nickname ? (
+            <>
+              {rank} {surname}{" "}
+              <span style={styles.nicknameText}>'{nickname}'</span>
+            </>
+          ) : (
+            name
+          )}
+          {isSelf && <span className="fathom-mono" style={styles.youTag}> (YOU)</span>}
+        </div>
+        <div className="fathom-mono" style={styles.homeProfileStats}>
+          {diveCount} DIVES · {diveTime} UNDERWATER
+        </div>
+      </div>
+    </div>
+  );
+}
 
+function HomeScreen({ dives, quals, upcoming, onGoToTab }) {
   const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
 
   const outOfDateQuals = quals.filter((q) => {
@@ -554,17 +629,13 @@ function HomeScreen({ dives, quals, upcoming, onGoToTab }) {
   return (
     <div style={styles.tabContent}>
       {/* Profile summary */}
-      <div style={styles.homeProfileCard}>
-        <div style={styles.profileIconWrap}>
-          <User size={20} color={COLORS.teal} strokeWidth={2} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div className="fathom-oswald" style={styles.homeProfileId}>{diverId}</div>
-          <div className="fathom-mono" style={styles.homeProfileStats}>
-            {dives.length} DIVES · {fmtHoursMins(totalMins)} UNDERWATER
-          </div>
-        </div>
-      </div>
+      <ProfileSummaryCard
+        rank={CURRENT_USER.rank}
+        surname={CURRENT_USER.surname}
+        nickname={CURRENT_USER.nickname}
+        diveCount={dives.length}
+        diveTime={fmtHoursMins(totalMins)}
+      />
 
       {/* Qualifications status */}
       <div className="fathom-mono" style={styles.categoryLabel}>QUALIFICATIONS</div>
@@ -634,13 +705,52 @@ function HomeScreen({ dives, quals, upcoming, onGoToTab }) {
 }
 
 /* ============================================================
+   MY SQUADRON TAB
+   ============================================================ */
+function SquadronTab({ dives, onBackUpData }) {
+  const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
+
+  return (
+    <div style={styles.tabContent}>
+      <PageHeaderWithProfile
+        title="My Squadron"
+        subtitle={`${SQUADRON.length} personnel`}
+        dives={dives}
+        onBackUpData={onBackUpData}
+      />
+      {SQUADRON.map((member) =>
+        member.isSelf ? (
+          <ProfileSummaryCard
+            key={member.id}
+            rank={member.rank}
+            surname={member.surname}
+            nickname={member.nickname}
+            diveCount={dives.length}
+            diveTime={fmtHoursMins(totalMins)}
+            isSelf
+          />
+        ) : (
+          <ProfileSummaryCard
+            key={member.id}
+            name={member.name}
+            diveCount={member.diveCount}
+            diveTime={member.diveTime}
+          />
+        )
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
    BOTTOM NAV
    ============================================================ */
-function BottomNav({ view, tab, onNavigate }) {
+function BottomNav({ view, tab, onNavigate, syncStatus }) {
   const items = [
     { key: "quals", label: "Records", icon: Award },
     { key: "dives", label: "Dives", icon: Waves },
     { key: "stats", label: "Stats", icon: BarChart3 },
+    { key: "squadron", label: "Squadron", icon: Users },
   ];
   return (
     <nav style={styles.nav}>
@@ -655,14 +765,21 @@ function BottomNav({ view, tab, onNavigate }) {
               color: active ? COLORS.teal : COLORS.textMuted,
             }}
           >
-            <div
-              style={{
-                ...styles.navIconWrap,
-                background: active ? COLORS.tealDark : "transparent",
-                border: active ? `1px solid ${COLORS.teal}` : "1px solid transparent",
-              }}
-            >
-              <Icon size={20} strokeWidth={2} color={active ? COLORS.teal : COLORS.textMuted} />
+            <div style={{ position: "relative" }}>
+              <div
+                style={{
+                  ...styles.navIconWrap,
+                  background: active ? COLORS.tealDark : "transparent",
+                  border: active ? `1px solid ${COLORS.teal}` : "1px solid transparent",
+                }}
+              >
+                <Icon size={20} strokeWidth={2} color={active ? COLORS.teal : COLORS.textMuted} />
+              </div>
+              {key === "dives" && (
+                <div style={styles.syncBadgeWrap}>
+                  <SyncBadge status={syncStatus} />
+                </div>
+              )}
             </div>
             <span className="fathom-mono" style={styles.navLabel}>{label.toUpperCase()}</span>
           </button>
@@ -675,13 +792,18 @@ function BottomNav({ view, tab, onNavigate }) {
 /* ============================================================
    DIVES TAB
    ============================================================ */
-function DivesTab({ dives, onAddDive }) {
+function DivesTab({ dives, onAddDive, onBackUpData }) {
   const [expandedId, setExpandedId] = useState(null);
   const grouped = useMemo(() => groupByMonth(dives), [dives]);
 
   return (
     <div style={styles.tabContent}>
-      <Header title="Dives" subtitle={`${dives.length} logged`} />
+      <PageHeaderWithProfile
+        title="Dives"
+        subtitle={`${dives.length} logged`}
+        dives={dives}
+        onBackUpData={onBackUpData}
+      />
 
       <button style={styles.addDiveTile} onClick={onAddDive}>
         <Plus size={20} color={COLORS.teal} />
@@ -948,12 +1070,8 @@ function Field({ label, value, onChange, type = "text", placeholder, half, texta
 /* ============================================================
    STATS TAB
    ============================================================ */
-function StatsTab({ dives }) {
-  const [showProfile, setShowProfile] = useState(false);
-
-  // Placeholder until shared Diver ID login is wired up between Fathom and SLATE
-  const diverId = "DVR_FROSTIE";
-  const displayId = diverId.replace(/^DVR_/, "");
+function StatsTab({ dives, onBackUpData }) {
+  // Shared Diver ID login across SLATE/FATHOM still to be wired up — using the real name for now
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -994,27 +1112,12 @@ function StatsTab({ dives }) {
 
   return (
     <div style={styles.tabContent}>
-      <div style={styles.statsHeaderRow}>
-        <div>
-          <div className="fathom-oswald" style={styles.pageTitle}>STATS</div>
-          <div className="fathom-mono" style={styles.pageSubtitle}>Dive record summary</div>
-        </div>
-        <button style={styles.profileBtn} onClick={() => setShowProfile(true)}>
-          <div style={styles.profileIconWrap}>
-            <User size={18} color={COLORS.teal} strokeWidth={2} />
-          </div>
-          <span className="fathom-mono" style={styles.profileIdLabel}>{displayId}</span>
-        </button>
-      </div>
-
-      {showProfile && (
-        <ProfileModal
-          diverId={displayId}
-          totalDives={stats.total}
-          totalTime={fmtHoursMins(stats.totalMins)}
-          onClose={() => setShowProfile(false)}
-        />
-      )}
+      <PageHeaderWithProfile
+        title="Stats"
+        subtitle="Dive record summary"
+        dives={dives}
+        onBackUpData={onBackUpData}
+      />
 
       <div style={styles.statGrid}>
         <StatTile label="Total Dive Time" value={fmtHoursMins(stats.totalMins)} />
@@ -1147,7 +1250,41 @@ function StatTile({ label, value }) {
   );
 }
 
-function ProfileModal({ diverId, totalDives, totalTime, onClose }) {
+function PageHeaderWithProfile({ title, subtitle, dives, onBackUpData }) {
+  const [showProfile, setShowProfile] = useState(false);
+  const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
+
+  return (
+    <>
+      <div style={styles.statsHeaderRow}>
+        <div>
+          <div className="fathom-oswald" style={styles.pageTitle}>{title.toUpperCase()}</div>
+          <div className="fathom-mono" style={styles.pageSubtitle}>{subtitle}</div>
+        </div>
+        <button style={styles.profileBtn} onClick={() => setShowProfile(true)}>
+          <div style={styles.profileIconWrap}>
+            <User size={18} color={COLORS.teal} strokeWidth={2} />
+          </div>
+          <span className="fathom-mono" style={styles.profileIdLabel}>{CURRENT_USER_SHORT.toUpperCase()}</span>
+        </button>
+      </div>
+
+      {showProfile && (
+        <ProfileModal
+          rank={CURRENT_USER.rank}
+          surname={CURRENT_USER.surname}
+          nickname={CURRENT_USER.nickname}
+          totalDives={dives.length}
+          totalTime={fmtHoursMins(totalMins)}
+          onClose={() => setShowProfile(false)}
+          onBackUpData={onBackUpData}
+        />
+      )}
+    </>
+  );
+}
+
+function ProfileModal({ rank, surname, nickname, totalDives, totalTime, onClose, onBackUpData }) {
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
@@ -1157,7 +1294,9 @@ function ProfileModal({ diverId, totalDives, totalTime, onClose }) {
         <div style={styles.modalIconWrap}>
           <User size={32} color={COLORS.teal} strokeWidth={1.75} />
         </div>
-        <div className="fathom-oswald" style={styles.modalDiverId}>{diverId}</div>
+        <div className="fathom-oswald" style={styles.modalDiverId}>
+          {rank} {surname} <span style={styles.nicknameText}>'{nickname}'</span>
+        </div>
         <div style={styles.modalStatsRow}>
           <div style={styles.modalStat}>
             <div className="fathom-mono" style={styles.modalStatValue}>{totalDives}</div>
@@ -1171,7 +1310,13 @@ function ProfileModal({ diverId, totalDives, totalTime, onClose }) {
 
         <div style={styles.modalDivider} />
 
-        <button style={styles.backupBtn}>
+        <button
+          style={styles.backupBtn}
+          onClick={() => {
+            onBackUpData();
+            onClose();
+          }}
+        >
           <UploadCloud size={16} color={COLORS.teal} strokeWidth={2} />
           <span className="fathom-mono" style={styles.backupBtnText}>BACK UP DATA</span>
         </button>
@@ -1188,7 +1333,7 @@ function ProfileModal({ diverId, totalDives, totalTime, onClose }) {
 /* ============================================================
    QUALIFICATIONS TAB
    ============================================================ */
-function QualificationsTab({ quals, onAddQual }) {
+function QualificationsTab({ quals, dives, onAddQual, onBackUpData }) {
   const [expandedId, setExpandedId] = useState(null);
 
   const { expired, expiringSoon, upToDate } = useMemo(() => {
@@ -1203,7 +1348,12 @@ function QualificationsTab({ quals, onAddQual }) {
 
   return (
     <div style={styles.tabContent}>
-      <Header title="Qualifications" subtitle={`${quals.length} on record`} />
+      <PageHeaderWithProfile
+        title="Qualifications"
+        subtitle={`${quals.length} on record`}
+        dives={dives}
+        onBackUpData={onBackUpData}
+      />
 
       <button style={styles.addDiveTile} onClick={onAddQual}>
         <Plus size={20} color={COLORS.teal} />
@@ -1394,6 +1544,32 @@ function BubblesIcon({ size = 22, color = COLORS.teal }) {
   );
 }
 
+const SYNC_STATUS_CONFIG = {
+  upToDate: { color: COLORS.green, Icon: Check },
+  syncing: { color: COLORS.amber, Icon: RefreshCw },
+  outdated: { color: COLORS.red, Icon: AlertCircle },
+};
+
+function SyncBadge({ status, size = 15 }) {
+  const { color, Icon } = SYNC_STATUS_CONFIG[status];
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <Cloud size={size} color={color} fill={color} strokeWidth={0} />
+      <Icon
+        size={size * 0.52}
+        color={COLORS.bg}
+        strokeWidth={3.2}
+        style={{
+          position: "absolute",
+          top: "58%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+        }}
+      />
+    </div>
+  );
+}
+
 /* ============================================================
    STYLES
    ============================================================ */
@@ -1471,6 +1647,8 @@ const styles = {
   },
   homeProfileId: { fontSize: 16, letterSpacing: 1, color: COLORS.textBright },
   homeProfileStats: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 3, letterSpacing: 0.3 },
+  youTag: { fontSize: 10, color: COLORS.teal, letterSpacing: 0.5 },
+  nicknameText: { color: COLORS.textMuted },
   qualsUpToDateRow: { display: "flex", alignItems: "center", gap: 10 },
   qualsUpToDateText: { fontSize: 13.5, color: COLORS.textPrimary },
   qualsIssueRow: {
@@ -1736,4 +1914,13 @@ const styles = {
     justifyContent: "center",
   },
   navLabel: { fontSize: 9.5, letterSpacing: 1 },
+  syncBadgeWrap: {
+    position: "absolute",
+    bottom: -2,
+    right: -4,
+    background: COLORS.panel,
+    borderRadius: "50%",
+    padding: 1,
+    lineHeight: 0,
+  },
 };
