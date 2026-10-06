@@ -663,6 +663,42 @@ export default function FathomApp() {
     updateScrollHint();
   }, [view, tab, addingDive, addingQual, updateScrollHint]);
 
+  // After a pull-to-refresh on Android, 100dvh can come out taller than the visible screen,
+  // which pushes the nav bar off the bottom. Instead, size the app to the height that is
+  // really visible, and re-check it a few times as the page settles after a (re)load.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+
+    const fit = () => {
+      const tag = document.activeElement ? document.activeElement.tagName : "";
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return; // keyboard may be up: leave the layout alone
+      if (vv && vv.scale > 1.01) return; // pinch-zoomed: don't resize
+      const visible = vv ? vv.height : window.innerHeight;
+      if (visible > 0) root.style.setProperty("--app-height", `${Math.floor(visible)}px`);
+    };
+    const refitSoon = () => setTimeout(fit, 120);
+
+    fit();
+    const timers = [60, 200, 500, 1000, 2000].map((ms) => setTimeout(fit, ms));
+    window.addEventListener("resize", fit);
+    window.addEventListener("orientationchange", refitSoon);
+    window.addEventListener("pageshow", fit);
+    document.addEventListener("visibilitychange", fit);
+    document.addEventListener("focusout", refitSoon);
+    if (vv) vv.addEventListener("resize", fit);
+
+    return () => {
+      timers.forEach(clearTimeout);
+      window.removeEventListener("resize", fit);
+      window.removeEventListener("orientationchange", refitSoon);
+      window.removeEventListener("pageshow", fit);
+      document.removeEventListener("visibilitychange", fit);
+      document.removeEventListener("focusout", refitSoon);
+      if (vv) vv.removeEventListener("resize", fit);
+    };
+  }, []);
+
   // Re-check whenever the page content or the window changes size (e.g. expanding a card).
   useEffect(() => {
     const scrollEl = scrollRef.current;
@@ -2636,7 +2672,7 @@ const styles = {
   app: {
     display: "flex",
     flexDirection: "column",
-    height: "100dvh",
+    height: "var(--app-height, 100dvh)",
     maxWidth: 480,
     margin: "0 auto",
     background: COLORS.bg,
