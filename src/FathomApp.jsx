@@ -1,7 +1,9 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useLayoutEffect, useEffect, useCallback } from "react";
 import {
   Plus,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Waves,
   Award,
@@ -14,6 +16,9 @@ import {
   Check,
   RefreshCw,
   AlertCircle,
+  Send,
+  Paperclip,
+  Watch,
 } from "lucide-react";
 
 /* ============================================================
@@ -414,6 +419,77 @@ function qualStatus(qual) {
   return "current";
 }
 
+/* ---------------- medical records seed data ---------------- */
+// Placeholder certificate artwork, drawn as an SVG so no image file is needed.
+// In the real app this would be the diver's own uploaded photo/scan.
+function makeFitToDiveCertImage({ name, issued, validUntil, officer }) {
+  const label = (y, text) =>
+    `<text x="50" y="${y}" font-family="Arial, sans-serif" font-size="9" letter-spacing="2" fill="#6B7280">${text}</text>`;
+  const value = (y, text) =>
+    `<text x="50" y="${y}" font-family="Georgia, 'Times New Roman', serif" font-size="17" fill="#111827">${text}</text>` +
+    `<line x1="50" y1="${y + 8}" x2="370" y2="${y + 8}" stroke="#B8B09A" stroke-width="1"/>`;
+
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="420" height="594" viewBox="0 0 420 594">` +
+    `<rect width="420" height="594" fill="#F7F4EA"/>` +
+    `<rect x="14" y="14" width="392" height="566" fill="none" stroke="#1D2F4B" stroke-width="3"/>` +
+    `<rect x="22" y="22" width="376" height="550" fill="none" stroke="#1D2F4B" stroke-width="1"/>` +
+    `<text x="210" y="84" text-anchor="middle" font-family="Georgia, serif" font-size="13" letter-spacing="4" fill="#1D2F4B">DIVER MEDICAL</text>` +
+    `<text x="210" y="132" text-anchor="middle" font-family="Georgia, serif" font-size="36" font-weight="bold" fill="#1D2F4B">FIT TO DIVE</text>` +
+    `<text x="210" y="158" text-anchor="middle" font-family="Georgia, serif" font-size="14" font-style="italic" fill="#3A4A63">Certificate of Medical Fitness</text>` +
+    `<line x1="70" y1="180" x2="350" y2="180" stroke="#1D2F4B" stroke-width="1"/>` +
+    label(226, "NAME") + value(248, name) +
+    label(288, "CATEGORY") + value(310, "Diver (Mine Clearance)") +
+    label(350, "DATE OF EXAMINATION") + value(372, issued) +
+    label(412, "VALID UNTIL") + value(434, validUntil) +
+    label(474, "MEDICAL OFFICER") + value(496, officer) +
+    `<path d="M60 540 c 12 -24, 24 -24, 30 -4 s 10 18, 22 -2 s 14 -20, 26 0 s 12 14, 28 -6" fill="none" stroke="#1D2F4B" stroke-width="1.8" stroke-linecap="round"/>` +
+    `<text x="210" y="340" transform="rotate(-28 210 340)" text-anchor="middle" font-family="Arial, sans-serif" font-size="70" font-weight="bold" fill="#B91C1C" fill-opacity="0.12">SAMPLE</text>` +
+    `<text x="210" y="562" text-anchor="middle" font-family="Arial, sans-serif" font-size="8.5" fill="#6B7280">Placeholder image - replace with scanned certificate</text>` +
+    `</svg>`;
+
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+const SEED_MEDICAL = [
+  {
+    id: "med1",
+    name: "Diver Medical",
+    interval: "Every 2 years",
+    lastDateLabel: "Date Issued",
+    lastDate: "2025-03-12",
+    expiryDate: "2027-03-12",
+    signedOffBy: "Surg Lt Cdr A. Prentice RN",
+    attachment: {
+      name: "Fit to Dive Certificate",
+      src: makeFitToDiveCertImage({
+        name: `${CURRENT_USER.rank} ${CURRENT_USER.surname}`,
+        issued: "12 March 2025",
+        validUntil: "12 March 2027",
+        officer: "Surg Lt Cdr A. Prentice RN",
+      }),
+    },
+  },
+  {
+    id: "med2",
+    name: "Dental",
+    interval: "Annually",
+    lastDateLabel: "Last Check-Up",
+    lastDate: "2025-10-20",
+    expiryDate: "2026-10-20",
+    location: "HMS Collingwood Dental",
+  },
+  {
+    id: "med3",
+    name: "X-Ray",
+    interval: "Every 2 years",
+    lastDateLabel: "Last Scan Date",
+    lastDate: "2024-09-10",
+    expiryDate: "2026-09-10",
+    location: "Queen Alexandra Hospital, Portsmouth",
+  },
+];
+
 /* ---------------- upcoming / planned dive seed data ---------------- */
 const SEED_UPCOMING_DIVES = [
   {
@@ -488,17 +564,47 @@ export default function FathomApp() {
   const [tab, setTab] = useState("dives");
   const [dives, setDives] = useState(SEED_DIVES);
   const [quals, setQuals] = useState(SEED_QUALS);
+  const [medical] = useState(SEED_MEDICAL);
   const [upcoming, setUpcoming] = useState(SEED_UPCOMING_DIVES);
   const [addingDive, setAddingDive] = useState(false);
   const [addingQual, setAddingQual] = useState(false);
 
-  // Demo only: randomly starts "up to date" or "outdated" each time the app loads.
-  // Real backend sync status would replace this.
-  const [syncStatus, setSyncStatus] = useState(() =>
-    Math.random() < 0.5 ? "upToDate" : "outdated"
-  );
+  // Demo only: always starts "outdated" (red) each time the app loads, so Back Up Data
+  // can be demonstrated. Real backend sync status would replace this.
+  const [syncStatus, setSyncStatus] = useState("outdated");
 
   const [showNickname, setShowNickname] = useState(true);
+
+  const scrollRef = useRef(null);
+  const contentRef = useRef(null);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  // Shows the bottom fade only while real content is still hidden below the fold
+  // (the empty padding at the very end of a page doesn't count).
+  const updateScrollHint = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const padBottom = parseFloat(window.getComputedStyle(el).paddingBottom) || 0;
+    const hiddenBelow = el.scrollHeight - el.scrollTop - el.clientHeight - padBottom;
+    setCanScrollDown(hiddenBelow > 4);
+  }, []);
+
+  // Every page change (Home, any tab, or opening/closing an add form) starts at the top.
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    updateScrollHint();
+  }, [view, tab, addingDive, addingQual, updateScrollHint]);
+
+  // Re-check whenever the page content or the window changes size (e.g. expanding a card).
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    const contentEl = contentRef.current;
+    if (!scrollEl || !contentEl || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(updateScrollHint);
+    observer.observe(scrollEl);
+    observer.observe(contentEl);
+    return () => observer.disconnect();
+  }, [updateScrollHint]);
 
   const handleAddDive = (dive) => {
     setDives((prev) => [{ ...dive, id: `d${Date.now()}` }, ...prev]);
@@ -534,6 +640,7 @@ export default function FathomApp() {
         .fathom-scroll::-webkit-scrollbar { width: 6px; }
         .fathom-scroll::-webkit-scrollbar-thumb { background: ${COLORS.divider}; border-radius: 3px; }
         button { cursor: pointer; }
+        @keyframes fathom-spin { to { transform: rotate(360deg); } }
       `}</style>
 
       {!onASubScreen && (
@@ -548,7 +655,14 @@ export default function FathomApp() {
         </button>
       )}
 
-      <div className="fathom-scroll" style={styles.screenArea}>
+      <div style={styles.screenWrap}>
+      <div
+        ref={scrollRef}
+        className="fathom-scroll"
+        style={styles.screenArea}
+        onScroll={updateScrollHint}
+      >
+        <div ref={contentRef}>
         {addingDive ? (
           <AddDiveForm
             existingDives={dives}
@@ -564,6 +678,7 @@ export default function FathomApp() {
           <HomeScreen
             dives={dives}
             quals={quals}
+            medical={medical}
             upcoming={upcoming}
             onGoToTab={goToTab}
             showNickname={showNickname}
@@ -571,6 +686,7 @@ export default function FathomApp() {
         ) : tab === "dives" ? (
           <DivesTab
             dives={dives}
+            upcoming={upcoming}
             onAddDive={() => setAddingDive(true)}
             onBackUpData={handleBackUpData}
             showNickname={showNickname}
@@ -593,6 +709,7 @@ export default function FathomApp() {
         ) : (
           <QualificationsTab
             quals={quals}
+            medical={medical}
             dives={dives}
             onAddQual={() => setAddingQual(true)}
             onBackUpData={handleBackUpData}
@@ -600,6 +717,9 @@ export default function FathomApp() {
             onToggleNickname={setShowNickname}
           />
         )}
+        </div>
+      </div>
+      <div style={{ ...styles.scrollFade, opacity: canScrollDown ? 1 : 0 }} />
       </div>
 
       {!onASubScreen && (
@@ -648,7 +768,7 @@ function ProfileSummaryCard({ name, rank, surname, nickname, diveCount, diveTime
   );
 }
 
-function HomeScreen({ dives, quals, upcoming, onGoToTab, showNickname }) {
+function HomeScreen({ dives, quals, medical, upcoming, onGoToTab, showNickname }) {
   const totalMins = dives.reduce((s, d) => s + d.bottomTime, 0);
 
   const outOfDateQuals = quals.filter((q) => {
@@ -667,8 +787,24 @@ function HomeScreen({ dives, quals, upcoming, onGoToTab, showNickname }) {
         diveTime={fmtHoursMins(totalMins)}
       />
 
-      {/* Qualifications status */}
-      <div className="fathom-mono" style={styles.categoryLabel}>QUALIFICATIONS</div>
+      {/* Records: medical status boxes, then qualifications status */}
+      <div className="fathom-mono" style={styles.categoryLabel}>RECORDS</div>
+      <div style={styles.homeMedicalRow}>
+        {medical.map((item) => {
+          const status = QUAL_STATUS[qualStatus(item)];
+          return (
+            <button key={item.id} style={{ ...styles.homeMedicalBox, borderColor: status.color }} onClick={() => onGoToTab("quals")}>
+              <span className="fathom-mono" style={styles.homeMedicalName}>{item.name.toUpperCase()}</span>
+              <span style={styles.homeMedicalStatusRow}>
+                <span style={{ ...styles.typeDot, background: status.color }} />
+                <span className="fathom-oswald" style={{ ...styles.homeMedicalStatus, color: status.color }}>
+                  {status.label}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
       <button style={{ ...styles.panelCard, width: "100%", display: "block", textAlign: "left" }} onClick={() => onGoToTab("quals")}>
         {outOfDateQuals.length === 0 ? (
           <div style={styles.qualsUpToDateRow}>
@@ -825,7 +961,114 @@ function BottomNav({ view, tab, onNavigate, syncStatus }) {
 /* ============================================================
    DIVES TAB
    ============================================================ */
-function DivesTab({ dives, onAddDive, onBackUpData, showNickname, onToggleNickname }) {
+/* ---------------- calendar helpers ---------------- */
+const WEEKDAY_INITIALS = ["M", "T", "W", "T", "F", "S", "S"]; // weeks start on Monday
+
+function isoDate(year, monthIndex, day) {
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+// Leading nulls pad the first week so day 1 lands under the right weekday (Monday-first)
+function buildMonthCells(year, monthIndex) {
+  const leadingBlanks = (new Date(year, monthIndex, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  return cells;
+}
+
+function groupTypesByDate(list) {
+  const map = {};
+  for (const item of list) {
+    if (!map[item.date]) map[item.date] = [];
+    map[item.date].push(item.type);
+  }
+  return map;
+}
+
+function DiveCalendar({ dives, upcoming = [] }) {
+  const [cursor, setCursor] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const cells = useMemo(() => buildMonthCells(year, month), [year, month]);
+  const loggedByDate = useMemo(() => groupTypesByDate(dives), [dives]);
+  const plannedByDate = useMemo(() => groupTypesByDate(upcoming), [upcoming]);
+
+  const now = new Date();
+  const todayIso = isoDate(now.getFullYear(), now.getMonth(), now.getDate());
+
+  return (
+    <div style={{ ...styles.panelCard, marginBottom: 14 }}>
+      <div style={styles.calHeader}>
+        <button style={styles.iconBtn} onClick={() => setCursor(new Date(year, month - 1, 1))}>
+          <ChevronLeft size={18} color={COLORS.textMuted} />
+        </button>
+        <span className="fathom-oswald" style={styles.calMonthLabel}>
+          {MONTH_NAMES[month].toUpperCase()} {year}
+        </span>
+        <button style={styles.iconBtn} onClick={() => setCursor(new Date(year, month + 1, 1))}>
+          <ChevronRight size={18} color={COLORS.textMuted} />
+        </button>
+      </div>
+
+      <div style={styles.calWeekRow}>
+        {WEEKDAY_INITIALS.map((w, i) => (
+          <div key={i} className="fathom-mono" style={styles.calWeekDay}>{w}</div>
+        ))}
+      </div>
+
+      <div style={styles.calGrid}>
+        {cells.map((day, i) => {
+          if (day === null) return <div key={`b${i}`} />;
+          const iso = isoDate(year, month, day);
+          const isToday = iso === todayIso;
+          const dots = [
+            ...(loggedByDate[iso] || []).map((t) => ({ kind: "logged", color: typeInfo(t).color })),
+            ...(plannedByDate[iso] || []).map((t) => ({ kind: "planned", color: typeInfo(t).color })),
+          ].slice(0, 3);
+          return (
+            <div key={iso} style={styles.calDayCell}>
+              <span style={{ ...styles.calDayNum, ...(isToday ? styles.calDayNumToday : {}) }}>
+                {day}
+              </span>
+              <div style={styles.calDotRow}>
+                {dots.map((d, j) => (
+                  <span
+                    key={j}
+                    style={
+                      d.kind === "logged"
+                        ? { ...styles.calDot, background: d.color }
+                        : { ...styles.calDot, border: `1.5px solid ${d.color}` }
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={styles.calLegend}>
+        <span style={styles.calLegendItem}>
+          <span style={{ ...styles.calDot, background: COLORS.textMuted }} />
+          <span className="fathom-mono" style={styles.calLegendText}>LOGGED</span>
+        </span>
+        <span style={styles.calLegendItem}>
+          <span style={{ ...styles.calDot, border: `1.5px solid ${COLORS.textMuted}` }} />
+          <span className="fathom-mono" style={styles.calLegendText}>PLANNED</span>
+        </span>
+        <span className="fathom-mono" style={styles.calLegendText}>COLOUR = DIVE TYPE</span>
+      </div>
+    </div>
+  );
+}
+
+function DivesTab({ dives, upcoming, onAddDive, onBackUpData, showNickname, onToggleNickname }) {
   const [expandedId, setExpandedId] = useState(null);
   const grouped = useMemo(() => groupByMonth(dives), [dives]);
 
@@ -839,6 +1082,8 @@ function DivesTab({ dives, onAddDive, onBackUpData, showNickname, onToggleNickna
         showNickname={showNickname}
         onToggleNickname={onToggleNickname}
       />
+
+      <DiveCalendar dives={dives} upcoming={upcoming} />
 
       <button style={styles.addDiveTile} onClick={onAddDive}>
         <Plus size={20} color={COLORS.teal} />
@@ -938,6 +1183,36 @@ function Detail({ label, value, full, dotColor }) {
 /* ============================================================
    ADD DIVE FORM
    ============================================================ */
+/* ---------------- spoofed dive computer import (demo only) ---------------- */
+// Only what a dive computer would actually record. Site, team, rig, task etc. stay manual.
+function diveComputerData(source) {
+  const d = new Date();
+  d.setDate(d.getDate() - 1); // "last night's" dive
+  const date = isoDate(d.getFullYear(), d.getMonth(), d.getDate());
+  if (source === "Garmin") {
+    return {
+      date,
+      timeIn: "09:12",
+      timeOut: "09:58",
+      bottomTime: "46",
+      maxDepth: "21.4",
+      waterTemp: "14°C",
+      gas: "Nitrox 32",
+      decoStops: "None required",
+    };
+  }
+  return {
+    date,
+    timeIn: "13:05",
+    timeOut: "13:49",
+    bottomTime: "44",
+    maxDepth: "18.7",
+    waterTemp: "15°C",
+    gas: "Air",
+    decoStops: "None required",
+  };
+}
+
 function AddDiveForm({ existingDives, onCancel, onSave }) {
   const nextDiveNumber = useMemo(() => {
     const highest = existingDives.reduce(
@@ -969,19 +1244,100 @@ function AddDiveForm({ existingDives, onCancel, onSave }) {
     notes: "",
   });
 
+  // Dive computer import (spoofed): menu -> loading screen -> back here with data filled in
+  const [importStep, setImportStep] = useState(null); // null | "menu" | "loading"
+  const [importSource, setImportSource] = useState(null);
+  const [loadingPhase, setLoadingPhase] = useState(0);
+  const [importedFrom, setImportedFrom] = useState(null);
+
+  useEffect(() => {
+    if (importStep !== "loading") return undefined;
+    const phaseTimer = setTimeout(() => setLoadingPhase(1), 1300);
+    const doneTimer = setTimeout(() => {
+      setForm((f) => ({ ...f, ...diveComputerData(importSource) }));
+      setImportedFrom(importSource);
+      setLoadingPhase(0);
+      setImportStep(null);
+    }, 2800);
+    return () => {
+      clearTimeout(phaseTimer);
+      clearTimeout(doneTimer);
+    };
+  }, [importStep, importSource]);
+
+  const startImport = (source) => {
+    setImportSource(source);
+    setLoadingPhase(0);
+    setImportStep("loading");
+  };
+
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const canSave = form.location && form.date && form.maxDepth;
 
+  if (importStep === "loading") {
+    return (
+      <div style={styles.importLoading}>
+        <div style={styles.importSpinnerWrap}>
+          <div style={styles.importSpinner} />
+          <Watch size={24} color={COLORS.teal} />
+        </div>
+        <div className="fathom-oswald" style={styles.importLoadingTitle}>
+          {loadingPhase === 0
+            ? `CONNECTING TO ${importSource.toUpperCase()}...`
+            : "IMPORTING DIVE DATA..."}
+        </div>
+        <div className="fathom-mono" style={styles.importLoadingSub}>
+          {loadingPhase === 0 ? "Looking for your dive computer" : "Reading your latest dive"}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.tabContent}>
-      <div style={styles.formHeader}>
-        <button onClick={onCancel} style={styles.iconBtn}>
+      <div style={{ ...styles.formHeader, display: "grid", gridTemplateColumns: "1fr auto 1fr" }}>
+        <button onClick={onCancel} style={{ ...styles.iconBtn, justifySelf: "start" }}>
           <X size={20} color={COLORS.textMuted} />
         </button>
         <span className="fathom-oswald" style={styles.formHeaderTitle}>NEW DIVE LOG</span>
-        <div style={{ width: 32 }} />
+        <button style={styles.importBtn} onClick={() => setImportStep("menu")}>
+          <Watch size={14} color={COLORS.teal} />
+          <span className="fathom-mono" style={styles.importBtnText}>IMPORT</span>
+        </button>
       </div>
+
+      {importedFrom && (
+        <div style={styles.importBanner}>
+          <Watch size={16} color={COLORS.teal} style={{ flexShrink: 0 }} />
+          <div>
+            <div className="fathom-mono" style={styles.importBannerTitle}>
+              IMPORTED FROM {importedFrom.toUpperCase()}
+            </div>
+            <div className="fathom-body" style={styles.importBannerText}>
+              Dive computer data has been filled in. Add the remaining details below.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importStep === "menu" && (
+        <div style={styles.modalOverlay} onClick={() => setImportStep(null)}>
+          <div style={styles.importMenuCard} onClick={(e) => e.stopPropagation()}>
+            <button style={styles.modalClose} onClick={() => setImportStep(null)}>
+              <X size={18} color={COLORS.textMuted} />
+            </button>
+            <div className="fathom-oswald" style={styles.importMenuTitle}>IMPORT FROM DIVE COMPUTER</div>
+            <div className="fathom-mono" style={styles.importMenuSubtitle}>Choose your device</div>
+            <button style={styles.importDeviceBtn} onClick={() => startImport("Garmin")}>
+              <span className="fathom-oswald" style={styles.importDeviceBtnText}>GARMIN</span>
+            </button>
+            <button style={styles.importDeviceBtn} onClick={() => startImport("Suunto")}>
+              <span className="fathom-oswald" style={styles.importDeviceBtnText}>SUUNTO</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       <Field label="Date" type="date" value={form.date} onChange={set("date")} />
       <Field label="Location" value={form.location} onChange={set("location")} placeholder="Dive site name" />
@@ -1394,7 +1750,16 @@ function ProfileModal({
 /* ============================================================
    QUALIFICATIONS TAB
    ============================================================ */
-function QualificationsTab({ quals, dives, onAddQual, onBackUpData, showNickname, onToggleNickname }) {
+function SectionTitle({ children, first }) {
+  return (
+    <div style={{ ...styles.sectionTitleRow, marginTop: first ? 4 : 30 }}>
+      <div style={styles.sectionTitleBar} />
+      <span className="fathom-oswald" style={styles.sectionTitleText}>{children}</span>
+    </div>
+  );
+}
+
+function QualificationsTab({ quals, medical, dives, onAddQual, onBackUpData, showNickname, onToggleNickname }) {
   const [expandedId, setExpandedId] = useState(null);
 
   const { expired, expiringSoon, upToDate } = useMemo(() => {
@@ -1410,14 +1775,25 @@ function QualificationsTab({ quals, dives, onAddQual, onBackUpData, showNickname
   return (
     <div style={styles.tabContent}>
       <PageHeaderWithProfile
-        title="Qualifications"
-        subtitle={`${quals.length} on record`}
+        title="Records"
+        subtitle={`${medical.length + quals.length} on record`}
         dives={dives}
         onBackUpData={onBackUpData}
         showNickname={showNickname}
         onToggleNickname={onToggleNickname}
       />
 
+      <SectionTitle first>MEDICAL</SectionTitle>
+      {medical.map((item) => (
+        <MedicalCard
+          key={item.id}
+          item={item}
+          expanded={expandedId === item.id}
+          onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+        />
+      ))}
+
+      <SectionTitle>QUALIFICATIONS</SectionTitle>
       <button style={styles.addDiveTile} onClick={onAddQual}>
         <Plus size={20} color={COLORS.teal} />
         <span className="fathom-oswald" style={styles.addDiveText}>ADD QUALIFICATION</span>
@@ -1472,11 +1848,241 @@ function QualificationsTab({ quals, dives, onAddQual, onBackUpData, showNickname
   );
 }
 
+function SubmitUpdateModal({ kind, record, onClose }) {
+  const isMedical = kind === "medical";
+
+  // Pre-filled with the record's current details so only what has changed needs editing
+  const [form, setForm] = useState(() =>
+    isMedical
+      ? {
+          lastDate: record.lastDate || "",
+          expiryDate: record.expiryDate || "",
+          location: record.location || "",
+          signedOffBy: record.signedOffBy || "",
+        }
+      : {
+          authority: record.authority || "",
+          dateAwarded: record.dateAwarded || "",
+          expiryDate: record.expiryDate || "",
+          certRef: record.certRef || "",
+          notes: record.notes || "",
+        }
+  );
+  const [attachedImage, setAttachedImage] = useState(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const handleFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setAttachedImage({ name: file.name, src: reader.result });
+    reader.readAsDataURL(file);
+  };
+
+  const canSubmit = isMedical
+    ? form.lastDate && form.expiryDate
+    : form.authority && form.dateAwarded;
+
+  return (
+    <div style={styles.modalOverlay} onClick={submitted ? onClose : undefined}>
+      <div style={styles.updateModalCard} onClick={(e) => e.stopPropagation()}>
+        {submitted ? (
+          <div style={styles.submittedWrap}>
+            <div style={styles.submittedIcon}>
+              <Check size={26} color={COLORS.green} strokeWidth={2.5} />
+            </div>
+            <div className="fathom-oswald" style={styles.submittedTitle}>UPDATE SUBMITTED</div>
+            <div className="fathom-body" style={styles.submittedText}>
+              Your {record.name} update has been sent to your supervising officer for review.
+            </div>
+            <button style={styles.submittedCloseBtn} onClick={onClose}>
+              <span className="fathom-oswald" style={styles.submittedCloseText}>CLOSE</span>
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={styles.formHeader}>
+              <button onClick={onClose} style={styles.iconBtn}>
+                <X size={20} color={COLORS.textMuted} />
+              </button>
+              <div style={{ textAlign: "center" }}>
+                <div className="fathom-oswald" style={styles.formHeaderTitle}>SUBMIT UPDATE</div>
+                <div className="fathom-mono" style={styles.updateModalSubtitle}>{record.name}</div>
+              </div>
+              <div style={{ width: 32 }} />
+            </div>
+
+            {isMedical ? (
+              <>
+                <div style={styles.fieldRow}>
+                  <Field label={record.lastDateLabel} type="date" value={form.lastDate} onChange={set("lastDate")} half />
+                  <Field label="Expiry Date" type="date" value={form.expiryDate} onChange={set("expiryDate")} half />
+                </div>
+                {"location" in record && (
+                  <Field label="Location" value={form.location} onChange={set("location")} placeholder="e.g. HMS Collingwood Dental" />
+                )}
+                {"signedOffBy" in record && (
+                  <Field label="Signed Off By" value={form.signedOffBy} onChange={set("signedOffBy")} placeholder="Name / Rate" />
+                )}
+                {"attachment" in record && (
+                  <div style={{ marginBottom: 16 }}>
+                    <FieldLabel label="Attached Certificate" />
+                    <label style={styles.attachBtn}>
+                      <Paperclip size={14} color={COLORS.teal} />
+                      <span className="fathom-mono" style={styles.attachBtnText}>
+                        {attachedImage ? "REPLACE IMAGE" : "ATTACH IMAGE"}
+                      </span>
+                      <input type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+                    </label>
+                    {attachedImage && (
+                      <>
+                        <img src={attachedImage.src} alt="Attached certificate preview" style={styles.attachPreview} />
+                        <div className="fathom-mono" style={styles.attachFileName}>{attachedImage.name}</div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <Field label="Awarding Authority" value={form.authority} onChange={set("authority")} />
+                <div style={styles.fieldRow}>
+                  <Field label="Date Awarded" type="date" value={form.dateAwarded} onChange={set("dateAwarded")} half />
+                  <Field label="Expiry Date" type="date" value={form.expiryDate} onChange={set("expiryDate")} half />
+                </div>
+                <Field label="Certificate / Reference No." value={form.certRef} onChange={set("certRef")} />
+                <Field label="Notes" value={form.notes} onChange={set("notes")} textarea />
+              </>
+            )}
+
+            <button
+              disabled={!canSubmit}
+              onClick={() => setSubmitted(true)}
+              style={{
+                ...styles.saveBtn,
+                width: "100%",
+                opacity: canSubmit ? 1 : 0.4,
+                cursor: canSubmit ? "pointer" : "not-allowed",
+              }}
+            >
+              <span className="fathom-oswald" style={styles.saveBtnText}>SUBMIT UPDATE</span>
+            </button>
+            <div className="fathom-body" style={styles.submitNote}>
+              Upon submission, this will be submitted to your supervising officer for review.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ImageViewer({ src, title, onClose }) {
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.imageViewerCard} onClick={(e) => e.stopPropagation()}>
+        <button style={styles.modalClose} onClick={onClose}>
+          <X size={18} color={COLORS.textMuted} />
+        </button>
+        <div className="fathom-mono" style={styles.imageViewerTitle}>{title.toUpperCase()}</div>
+        <img src={src} alt={title} style={styles.imageViewerImg} />
+      </div>
+    </div>
+  );
+}
+
+function MedicalCard({ item, expanded, onToggle }) {
+  const [viewingImage, setViewingImage] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const status = QUAL_STATUS[qualStatus(item)];
+
+  return (
+    <>
+      <div style={styles.card}>
+        <button style={styles.cardHeader} onClick={onToggle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ ...styles.typeDot, background: status.color }} />
+            <div style={{ textAlign: "left" }}>
+              <div className="fathom-oswald" style={styles.cardTitle}>{item.name}</div>
+              <div className="fathom-mono" style={styles.cardSubtitle}>{item.interval}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ textAlign: "right" }}>
+              <div className="fathom-mono" style={{ ...styles.cardStat, color: status.color }}>
+                {status.label}
+              </div>
+              <div className="fathom-mono" style={styles.cardStatLabel}>EXP {item.expiryDate}</div>
+            </div>
+            <ChevronDown
+              size={18}
+              color={COLORS.textMuted}
+              style={{
+                transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.2s ease",
+              }}
+            />
+          </div>
+        </button>
+
+        {expanded && (
+          <div style={styles.cardExpanded}>
+            <div style={styles.detailGrid}>
+              <Detail label="Status" value={status.label} dotColor={status.color} />
+              <Detail label="Renewal" value={item.interval} />
+              <Detail label={item.lastDateLabel} value={item.lastDate} />
+              <Detail label="Expiry Date" value={item.expiryDate} />
+            </div>
+            {item.location && <Detail label="Location" value={item.location} full />}
+            {item.signedOffBy && <Detail label="Signed Off By" value={item.signedOffBy} full />}
+            {item.attachment && (
+              <div style={{ marginBottom: 4 }}>
+                <div className="fathom-mono" style={styles.detailLabel}>ATTACHED CERTIFICATE</div>
+                <button style={styles.attachmentThumbBtn} onClick={() => setViewingImage(true)}>
+                  <img
+                    src={item.attachment.src}
+                    alt={item.attachment.name}
+                    style={styles.attachmentThumb}
+                  />
+                </button>
+                <div className="fathom-mono" style={styles.attachmentCaption}>
+                  {item.attachment.name} · TAP TO ENLARGE
+                </div>
+              </div>
+            )}
+
+            <button style={styles.submitUpdateBtn} onClick={() => setSubmitting(true)}>
+              <Send size={14} color={COLORS.teal} />
+              <span className="fathom-mono" style={styles.submitUpdateBtnText}>SUBMIT UPDATE</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {viewingImage && item.attachment && (
+        <ImageViewer
+          src={item.attachment.src}
+          title={item.attachment.name}
+          onClose={() => setViewingImage(false)}
+        />
+      )}
+
+      {submitting && (
+        <SubmitUpdateModal kind="medical" record={item} onClose={() => setSubmitting(false)} />
+      )}
+    </>
+  );
+}
+
 function QualCard({ qual, expanded, onToggle }) {
+  const [submitting, setSubmitting] = useState(false);
   const statusKey = qualStatus(qual);
   const status = QUAL_STATUS[statusKey];
 
   return (
+    <>
     <div style={styles.card}>
       <button style={styles.cardHeader} onClick={onToggle}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1516,9 +2122,19 @@ function QualCard({ qual, expanded, onToggle }) {
             <Detail label="Certificate Ref" value={qual.certRef} />
           </div>
           {qual.notes && <Detail label="Notes" value={qual.notes} full />}
+
+          <button style={styles.submitUpdateBtn} onClick={() => setSubmitting(true)}>
+            <Send size={14} color={COLORS.teal} />
+            <span className="fathom-mono" style={styles.submitUpdateBtnText}>SUBMIT UPDATE</span>
+          </button>
         </div>
       )}
     </div>
+
+    {submitting && (
+      <SubmitUpdateModal kind="qualification" record={qual} onClose={() => setSubmitting(false)} />
+    )}
+    </>
   );
 }
 
@@ -1648,10 +2264,29 @@ const styles = {
     position: "relative",
     overflow: "hidden",
   },
+  screenWrap: {
+    position: "relative",
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
   screenArea: {
     flex: 1,
+    minHeight: 0,
     overflowY: "auto",
     padding: "24px 18px 100px",
+  },
+  scrollFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 56,
+    pointerEvents: "none",
+    background: "linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0))",
+    transition: "opacity 0.25s ease",
+    zIndex: 5,
   },
   tabContent: { display: "flex", flexDirection: "column" },
   masthead: {
@@ -1730,6 +2365,133 @@ const styles = {
   homeProfileStats: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 3, letterSpacing: 0.3 },
   youTag: { fontSize: 10, color: COLORS.teal, letterSpacing: 0.5 },
   nicknameText: { color: COLORS.textMuted },
+  importBtn: {
+    justifySelf: "end",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 10px",
+    borderRadius: 8,
+    background: COLORS.tealDark,
+    border: `1px solid ${COLORS.teal}`,
+  },
+  importBtnText: { fontSize: 10.5, letterSpacing: 1, color: COLORS.teal },
+  importBanner: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: "10px 12px",
+    marginBottom: 18,
+    background: COLORS.tealDark,
+    border: `1px solid ${COLORS.teal}`,
+    borderRadius: 10,
+  },
+  importBannerTitle: { fontSize: 10, letterSpacing: 1, color: COLORS.teal, marginBottom: 3 },
+  importBannerText: { fontSize: 12, color: COLORS.textPrimary, lineHeight: 1.4 },
+  importMenuCard: {
+    position: "relative",
+    width: "100%",
+    maxWidth: 320,
+    background: COLORS.card,
+    border: `1px solid ${COLORS.cardOutline}`,
+    borderRadius: 16,
+    padding: "28px 20px 20px",
+    textAlign: "center",
+  },
+  importMenuTitle: { fontSize: 16, letterSpacing: 1, color: COLORS.textBright, marginBottom: 6 },
+  importMenuSubtitle: { fontSize: 10.5, letterSpacing: 0.8, color: COLORS.textMuted, marginBottom: 20 },
+  importDeviceBtn: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "14px",
+    marginBottom: 10,
+    borderRadius: 10,
+    background: COLORS.tealDark,
+    border: `1px solid ${COLORS.teal}`,
+  },
+  importDeviceBtnText: { fontSize: 15, letterSpacing: 1.5, color: COLORS.teal },
+  importLoading: {
+    minHeight: "78vh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+  },
+  importSpinnerWrap: {
+    position: "relative",
+    width: 76,
+    height: 76,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 22,
+  },
+  importSpinner: {
+    position: "absolute",
+    inset: 0,
+    borderRadius: "50%",
+    border: `3px solid ${COLORS.divider}`,
+    borderTopColor: COLORS.teal,
+    animation: "fathom-spin 0.9s linear infinite",
+  },
+  importLoadingTitle: { fontSize: 17, letterSpacing: 1.5, color: COLORS.textBright, marginBottom: 8 },
+  importLoadingSub: { fontSize: 10.5, letterSpacing: 0.8, color: COLORS.textMuted },
+  calHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  calMonthLabel: { fontSize: 15, letterSpacing: 1, color: COLORS.textBright },
+  calWeekRow: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 6 },
+  calWeekDay: { textAlign: "center", fontSize: 10, color: COLORS.textDim },
+  calGrid: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 4 },
+  calDayCell: { display: "flex", flexDirection: "column", alignItems: "center", height: 40 },
+  calDayNum: {
+    width: 24,
+    height: 24,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "50%",
+    border: "1px solid transparent",
+    fontSize: 12.5,
+    color: COLORS.textPrimary,
+  },
+  calDayNumToday: { border: `1px solid ${COLORS.teal}`, color: COLORS.teal },
+  calDotRow: { display: "flex", gap: 3, marginTop: 3, height: 6 },
+  calDot: { width: 6, height: 6, borderRadius: "50%", flexShrink: 0 },
+  calLegend: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTop: `1px solid ${COLORS.divider}`,
+  },
+  calLegendItem: { display: "flex", alignItems: "center", gap: 6 },
+  calLegendText: { fontSize: 9, letterSpacing: 0.6, color: COLORS.textMuted },
+  homeMedicalRow: { display: "flex", gap: 10, marginBottom: 10 },
+  homeMedicalBox: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: "12px 12px",
+    background: COLORS.card,
+    border: `1px solid ${COLORS.cardOutline}`,
+    borderRadius: 12,
+    textAlign: "left",
+  },
+  homeMedicalName: { fontSize: 9.5, letterSpacing: 0.8, color: COLORS.textMuted },
+  homeMedicalStatusRow: { display: "flex", alignItems: "center", gap: 7 },
+  homeMedicalStatus: { fontSize: 14, letterSpacing: 0.4, whiteSpace: "nowrap" },
   qualsUpToDateRow: { display: "flex", alignItems: "center", gap: 10 },
   qualsUpToDateText: { fontSize: 13.5, color: COLORS.textPrimary },
   qualsIssueRow: {
@@ -1797,6 +2559,132 @@ const styles = {
     cursor: "pointer",
   },
   nicknameCheckboxLabel: { fontSize: 10, color: COLORS.textMuted, letterSpacing: 0.5 },
+
+  sectionTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 14,
+  },
+  sectionTitleBar: { width: 3, height: 18, borderRadius: 2, background: COLORS.teal },
+  sectionTitleText: { fontSize: 16, fontWeight: 600, letterSpacing: 1.5, color: COLORS.textBright },
+
+  attachmentThumbBtn: {
+    display: "block",
+    padding: 0,
+    marginTop: 2,
+    background: "transparent",
+    border: `1px solid ${COLORS.cardOutline}`,
+    borderRadius: 8,
+    overflow: "hidden",
+    lineHeight: 0,
+  },
+  attachmentThumb: { display: "block", width: 120, height: "auto" },
+  attachmentCaption: { fontSize: 9.5, color: COLORS.textMuted, letterSpacing: 0.4, marginTop: 6 },
+
+  submitUpdateBtn: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: "11px",
+    marginTop: 14,
+    borderRadius: 10,
+    background: "transparent",
+    border: `1px solid ${COLORS.teal}`,
+  },
+  submitUpdateBtnText: { fontSize: 12, letterSpacing: 1, color: COLORS.teal },
+
+  updateModalCard: {
+    position: "relative",
+    width: "100%",
+    maxWidth: 400,
+    maxHeight: "90vh",
+    overflowY: "auto",
+    background: COLORS.card,
+    border: `1px solid ${COLORS.cardOutline}`,
+    borderRadius: 16,
+    padding: "22px 20px 20px",
+  },
+  updateModalSubtitle: { fontSize: 10.5, color: COLORS.textMuted, letterSpacing: 0.8, marginTop: 3 },
+  submitNote: {
+    fontSize: 10.5,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    lineHeight: 1.5,
+    marginTop: 10,
+  },
+
+  attachBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "9px 14px",
+    borderRadius: 8,
+    border: `1px dashed ${COLORS.teal}`,
+    background: COLORS.tealDark,
+    cursor: "pointer",
+  },
+  attachBtnText: { fontSize: 11, letterSpacing: 1, color: COLORS.teal },
+  attachPreview: {
+    display: "block",
+    width: 110,
+    height: "auto",
+    marginTop: 10,
+    borderRadius: 6,
+    border: `1px solid ${COLORS.cardOutline}`,
+  },
+  attachFileName: { fontSize: 10, color: COLORS.textMuted, marginTop: 6, letterSpacing: 0.3, wordBreak: "break-all" },
+
+  submittedWrap: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    textAlign: "center",
+    padding: "10px 6px 4px",
+  },
+  submittedIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: "50%",
+    background: COLORS.tealDark,
+    border: `1px solid ${COLORS.green}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  submittedTitle: { fontSize: 17, letterSpacing: 1, color: COLORS.textBright, marginBottom: 8 },
+  submittedText: { fontSize: 13, color: COLORS.textMuted, lineHeight: 1.5, marginBottom: 20 },
+  submittedCloseBtn: {
+    width: "100%",
+    padding: "12px",
+    borderRadius: 10,
+    background: "transparent",
+    border: `1px solid ${COLORS.cardOutline}`,
+  },
+  submittedCloseText: { fontSize: 13, letterSpacing: 1, color: COLORS.textPrimary },
+
+  imageViewerCard: {
+    position: "relative",
+    width: "100%",
+    maxWidth: 380,
+    maxHeight: "88vh",
+    overflowY: "auto",
+    background: COLORS.card,
+    border: `1px solid ${COLORS.cardOutline}`,
+    borderRadius: 16,
+    padding: "40px 16px 16px",
+  },
+  imageViewerTitle: {
+    fontSize: 10.5,
+    letterSpacing: 1,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  imageViewerImg: { display: "block", width: "100%", height: "auto", borderRadius: 6 },
   modalStatsRow: { display: "flex", gap: 24, width: "100%", justifyContent: "center" },
   modalStat: { textAlign: "center" },
   modalStatValue: { fontSize: 17, color: COLORS.teal },
